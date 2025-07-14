@@ -1,11 +1,11 @@
 import socket
 import threading
 import utils
-import config
+from config import PORT, ENCODING
 
 class Network:
-    def __init__(self, port=50999):
-        self.port = port
+    def __init__(self, port):
+        self.port = PORT
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.sock.bind(('', self.port))
@@ -41,7 +41,7 @@ class Network:
         utils.log("Stopped listening for incoming messages.", level="INFO")
 
     def send_message(self, message, dest_ip='<broadcast>'):
-        encoded_message = message.encode('utf-8')
+        encoded_message = message.encode(ENCODING)
         try:
             if dest_ip == '<broadcast>':
                 self.sock.sendto(encoded_message, ('255.255.255.255', self.port))
