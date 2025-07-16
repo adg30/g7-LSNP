@@ -1,14 +1,21 @@
 import socket
 import threading
 import utils
-from config import PORT, ENCODING
+import config
 
 class Network:
-    def __init__(self, port):
-        self.port = PORT
+    def __init__(self, port=50999):
+        self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.sock.bind(('', self.port))
+        try:
+            self.sock.bind(('', self.port))
+        except OSError as e:
+            if e.errno == 10048:  # Port in use
+                print(f"Port {self.port} in use. Close other instances first.")
+                raise
+            else:
+                raise
         self.message_handlers = []
         self.running = False
         utils.log(f"Network initialized on port {self.port}", level="INFO")
@@ -41,7 +48,7 @@ class Network:
         utils.log("Stopped listening for incoming messages.", level="INFO")
 
     def send_message(self, message, dest_ip='<broadcast>'):
-        encoded_message = message.encode(ENCODING)
+        encoded_message = message.encode('utf-8')
         try:
             if dest_ip == '<broadcast>':
                 self.sock.sendto(encoded_message, ('255.255.255.255', self.port))
