@@ -12,7 +12,7 @@ class LSNPClient:
         self.network = Network()
         
         # Get user info
-        self.user_id = f"user@{socket.gethostbyname(socket.gethostname())}"
+        self.user_id = f"user@{self.get_lan_ip()}"
         self.display_name = input("Enter your display name: ").strip() or "LSNP User"
         
         # Connect message handler
@@ -21,6 +21,16 @@ class LSNPClient:
         # Start network
         self.network.start_listening()
         utils.log(f"LSNP Client started for {self.user_id}", level="INFO")
+
+    def get_lan_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return "127.0.0.1"
 
     def handle_message(self, message_text, sender_ip):
         """Process incoming LSNP messages"""
