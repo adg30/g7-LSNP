@@ -1,5 +1,6 @@
 import time
 import socket
+import threading
 from peers import PeerManager
 from network import Network
 import parser
@@ -31,6 +32,35 @@ class LSNPClient:
             return ip
         except Exception:
             return "127.0.0.1"
+        
+    def start_periodic_task(self, message_func, interval_seconds):
+        def task_loop():
+            while True:
+                self.network.send_message(message_func())
+                time.sleep(interval_seconds)
+
+        self.network.send_message(message_func())
+
+        threading.Thread(target=task_loop, daemon=True).start()
+
+    def start_periodic_ping(self):
+        """Send a PING message every 300 seconds."""
+        self.start_periodic_task(
+            lambda: f"TYPE: PING\nUSER_ID: {self.user_id}\n\n",
+            300
+        )
+
+    def start_periodic_profile(self):
+        """Send a PROFILE message every 300 seconds."""
+        self.start_periodic_task(
+            lambda: parser.format_message({
+                'TYPE': 'PROFILE',
+                'USER_ID': self.user_id,
+                'DISPLAY_NAME': self.display_name,
+                'STATUS': 'Available'
+            }),
+            300
+        )
 
     def handle_message(self, message_text, sender_ip):
         """Process incoming LSNP messages"""
@@ -139,4 +169,6 @@ class LSNPClient:
 # Main entry point
 if __name__ == "__main__":
     client = LSNPClient()
+    client.start_periodic_ping()
+    client.start_periodic_profile()
     client.run_cli()

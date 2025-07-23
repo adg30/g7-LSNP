@@ -51,7 +51,7 @@ class Network:
         encoded_message = message.encode('utf-8')
         try:
             if dest_ip == '<broadcast>':
-                self.sock.sendto(encoded_message, ('255.255.255.255', self.port))
+                self.sock.sendto(encoded_message, ('192.168.1.255', self.port))
                 utils.log(f"Sent broadcast: {message}", level="SEND", message_type="BROADCAST")
             else:
                 self.sock.sendto(encoded_message, (dest_ip, self.port))
@@ -78,11 +78,11 @@ if __name__ == "__main__":
 
     net.register_message_handler(my_handler)
 
-    # Send a broadcast message after a short delay
     import time
-    time.sleep(2)
-    net.send_message("TYPE: PING\nUSER_ID: test@127.0.0.1\n\n")
-    time.sleep(2)
-    net.send_message("TYPE: PROFILE\nUSER_ID: test@127.0.0.1\nDISPLAY_NAME: TestUser\nSTATUS: Testing LSNP\n\n")
-    time.sleep(5)
-    net.stop_listening()
+    try:
+        while True:
+            net.send_message("TYPE: PING\nUSER_ID: user@192.168.1.13\n\n")
+            net.send_message("TYPE: PROFILE\nUSER_ID: user@192.168.1.13\nDISPLAY_NAME: dave\nSTATUS: Testing LSNP\n\n")
+            time.sleep(5)
+    except KeyboardInterrupt:
+        net.stop_listening()
