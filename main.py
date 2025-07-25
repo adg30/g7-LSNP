@@ -5,6 +5,7 @@ from peers import PeerManager
 from network import Network
 import parser
 import utils
+import secrets
 
 class LSNPClient:
     def __init__(self):
@@ -85,6 +86,10 @@ class LSNPClient:
             self.handle_post_message(parsed, sender_ip)
         elif msg_type == 'DM':
             self.handle_dm_message(parsed, sender_ip)
+        elif msg_type == 'FOLLOW':
+            self.handle_follow(parsed, sender_ip)
+        elif msg_type == 'UNFOLLOW':
+            self.handle_unfollow(parsed, sender_ip)
         # Add more message types later
     
     def handle_profile_message(self, parsed, sender_ip):
@@ -121,6 +126,51 @@ class LSNPClient:
                 content=parsed.get('CONTENT', ''),
                 timestamp=int(parsed.get('TIMESTAMP', time.time()))
             )
+
+    def handle_follow(self, parsed, sender_ip):
+        follower = parsed.get('USER_ID')
+        followed = parsed.get('TARGET')
+
+        if followed == self.user_id:
+            self.peer_manager.add_follower(follower)
+
+    def handle_unfollow(self, parsed, sender_ip):
+        unfollower = parsed.get('USER_ID')
+        unfollowed = parsed.get('TARGET')
+
+        if unfollowed == self.user_id:
+            self.peer_manager.remove_follower(unfollower)
+
+    def _send_follow_action(self, target_user_id: str, action: str):
+        """
+        Build and send a FOLLOW or UNFOLLOW message to the target user.
+        `action` must be either 'FOLLOW' or 'UNFOLLOW'.
+        """
+        if action not in ("FOLLOW", "UNFOLLOW"):
+            raise ValueError("action must be FOLLOW or UNFOLLOW")
+
+        ttl_seconds   = 3600
+        now           = int(time.time())
+        token         = f"{self.user_id}|{now + ttl_seconds}|follow"
+        message_id    = secrets.token_hex(8)
+
+        msg = parser.format_message({
+            'TYPE'      : action,
+            'MESSAGE_ID': message_id,
+            'FROM'      : self.user_id,
+            'TO'        : target_user_id,
+            'TIMESTAMP' : now,
+            'TOKEN'     : token,
+        })
+        
+        peer_info = self.peer_manager.peers.get(target_user_id)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent {action} to {target_user_id} via {dest_ip}", level="INFO")
+        else:
+            utils.log(f"Cannot send {action} — no known IP for {target_user_id}", level="WARN")
+
     
     def run_cli(self):
         """Main CLI loop"""
@@ -150,6 +200,22 @@ class LSNPClient:
                         self.peer_manager.display_dms_for_user(cmd[1])
                     else:
                         print("Usage: messages <user_id>")
+
+                elif command == "follow":
+                    if len(cmd) > 1:
+                        self._send_follow_action(cmd[1], "FOLLOW")
+                    else:
+                        print("Usage: follow <user_id>")
+
+                elif command == "unfollow":
+                    if len(cmd) > 1:
+                        self._send_follow_action(cmd[1], "UNFOLLOW")
+                    else:
+                        print("Usage: unfollow <user_id>")
+
+                elif command == "followers":
+                    self.peer_manager.display_followers()
+
                 elif command == "verbose":
                     import config
                     config.VERBOSE_MODE = not config.VERBOSE_MODE

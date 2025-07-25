@@ -3,10 +3,11 @@ import utils
 
 class PeerManager:
     def __init__(self):
-        self.peers = {}           
-        self.posts = {}           
-        self.direct_messages = [] 
-        self.groups = {}     
+        self.peers = {}
+        self.posts = {}
+        self.direct_messages = []
+        self.groups = {}
+        self.followers = {}
 
     def add_peer(self, user_id, display_name=None, status=None, ip_address=None):
         current_time = time.time()
@@ -114,3 +115,27 @@ class PeerManager:
             print(f"Likes: {len(post['likes'])}")
             print("-" * 40)
   
+
+    def add_follower(self, target_user, follower_user):
+        if target_user not in self.followers:
+            self.followers[target_user] = set()
+        self.followers[target_user].add(follower_user)
+        utils.log(f"{follower_user} is now following {target_user}", level="INFO")
+
+    def remove_follower(self, target_user, follower_user):
+        if target_user in self.followers:
+            self.followers[target_user].discard(follower_user)
+            utils.log(f"{follower_user} unfollowed {target_user}", level="INFO")
+
+    def get_followers(self, user_id):
+        return list(self.followers.get(user_id, set()))
+
+    def display_followers(self, user_id):
+        followers = self.get_followers(user_id)
+        if not followers:
+            print(f"{user_id} has no followers.")
+            return
+        
+        print(f"\n=== Followers of {user_id} ===")
+        for follower in followers:
+            print(f"- {follower}")
