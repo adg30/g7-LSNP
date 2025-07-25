@@ -210,7 +210,7 @@ class LSNPClient:
             'TOKEN': token
         })
 
-        for follower_id in self.peer_manager.followers:
+        for follower_id in self.peer_manager.get_followers(self.user_id):
             peer_info = self.peer_manager.peers.get(follower_id)
             if peer_info and peer_info.get('ip_address'):
                 self.network.send_message(msg, dest_ip=peer_info['ip_address'])
