@@ -130,30 +130,60 @@ class LSNPClient:
     def handle_follow(self, parsed, sender_ip):
         follower_id = parsed.get('FROM')
         followed_id = parsed.get('TO')
+        token = parsed.get('TOKEN', '')
 
-        print("test")
-        if followed_id == self.user_id:
-            self.peer_manager.add_follower(followed_id, follower_id)
+        if not follower_id or not followed_id:
+            utils.log("FOLLOW message missing FROM or TO field", level="WARN")
+            return
 
-            
-            follower_info = self.peer_manager.peers.get(follower_id, {})
-            follower_name = follower_info.get('display_name', follower_id)
+        # Prevent self-follow
+        if follower_id == followed_id:
+            utils.log("User attempted to follow themselves", level="WARN")
+            return
 
-            print(f"\nUser {follower_name} has followed you.")
-            print("test2")
+        if followed_id != self.user_id:
+            return  # Not for this user so do not
+
+        if not utils.validate_token(token, expected_scope='follow', expected_user_id=follower_id):
+            utils.log(f"Rejected FOLLOW from {follower_id}: invalid or expired token", level="WARN")
+            return
+
+        self.peer_manager.add_follower(followed_id, follower_id)
+
+        follower_info = self.peer_manager.peers.get(follower_id, {})
+        follower_name = follower_info.get('display_name', follower_id)
+
+        print(f"\nUser {follower_name} has followed you.")
 
 
     def handle_unfollow(self, parsed, sender_ip):
         unfollower_id = parsed.get('FROM')
         unfollowed_id = parsed.get('TO')
+        token = parsed.get('TOKEN', '')
 
-        if unfollowed_id == self.user_id:
-            self.peer_manager.remove_follower(unfollowed_id, unfollower_id)
+        if not unfollower_id or not unfollowed_id:
+            utils.log("UNFOLLOW message missing FROM or TO field", level="WARN")
+            return
 
-            unfollower_info = self.peer_manager.peers.get(unfollower_id, {})
-            unfollower_name = unfollower_info.get('display_name', unfollower_id)
+        # Prevent self-unfollow
+        if unfollower_id == unfollowed_id:
+            utils.log("User attempted to unfollow themselves", level="WARN")
+            return
 
-            print(f"\nUser {unfollower_name} has unfollowed you.")
+        if unfollowed_id != self.user_id:
+            return  # Not for this user so do not
+
+        if not utils.validate_token(token, expected_scope='follow', expected_user_id=unfollower_id):
+            utils.log(f"Rejected UNFOLLOW from {unfollower_id}: invalid or expired token", level="WARN")
+            return
+
+        self.peer_manager.remove_follower(unfollowed_id, unfollower_id)
+
+        unfollower_info = self.peer_manager.peers.get(unfollower_id, {})
+        unfollower_name = unfollower_info.get('display_name', unfollower_id)
+
+        print(f"\nUser {unfollower_name} has unfollowed you.")
+
 
 
     def _send_follow_action(self, target_user_id: str, action: str):
@@ -166,7 +196,7 @@ class LSNPClient:
 
         ttl_seconds   = 3600
         now           = int(time.time())
-        token         = f"{self.user_id}|{now + ttl_seconds}|follow"
+        token         = f"{self.user_id}|{now + ttl_seconds}|folle"
         message_id    = secrets.token_hex(8)
 
         msg = parser.format_message({

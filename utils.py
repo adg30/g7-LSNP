@@ -1,4 +1,5 @@
 import datetime
+import time
 
 def log(message, level="INFO", sender_ip=None, message_type=None, verbose=True):
     import config
@@ -15,3 +16,21 @@ def log(message, level="INFO", sender_ip=None, message_type=None, verbose=True):
 def set_verbose_mode(mode):
     import config
     config.VERBOSE_MODE = mode
+
+def validate_token(token: str, expected_scope: str, expected_user_id: str) -> bool:
+    try:
+        user_id, expiry_str, scope = token.strip().split("|")
+        expiry = int(expiry_str)
+
+        # validate token components
+        if user_id != expected_user_id:
+            return False # wrong user
+        if scope != expected_scope:
+            return False # diff scope
+        if expiry < int(time.time()):
+            return False  # token expired
+
+        return True
+    except Exception as e:
+        print(f"[ERROR] Invalid token format: {e}")
+        return False
