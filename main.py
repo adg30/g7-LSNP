@@ -83,13 +83,17 @@ class LSNPClient:
         if msg_type == 'PROFILE':
             self.handle_profile_message(parsed, sender_ip)
         elif msg_type == 'POST':
-            self.handle_post_message(parsed, sender_ip)
+            self.handle_post(parsed, sender_ip)
         elif msg_type == 'DM':
-            self.handle_dm_message(parsed, sender_ip)
+            self.handle_dm(parsed, sender_ip)
         elif msg_type == 'FOLLOW':
             self.handle_follow(parsed, sender_ip)
         elif msg_type == 'UNFOLLOW':
             self.handle_unfollow(parsed, sender_ip)
+        elif msg_type == "ACK":
+            self.handle_ack(parsed, sender_ip)
+        elif msg_type == "LIKE":
+            self.handle_like(parsed, sender_ip)
         # Add more message types later
     
     def handle_profile_message(self, parsed, sender_ip):
@@ -100,32 +104,10 @@ class LSNPClient:
             status=parsed.get('STATUS'),
             ip_address=sender_ip
         )
-    
-    def handle_post_message(self, parsed, sender_ip):
-        """Handle POST messages"""
-        # First add/update the peer
-        self.peer_manager.add_peer(
-            user_id=parsed['USER_ID'],
-            ip_address=sender_ip
-        )
-        
-        # Then add the post
-        self.peer_manager.add_post(
-            user_id=parsed['USER_ID'],
-            content=parsed.get('CONTENT', ''),
-            timestamp=int(parsed.get('TIMESTAMP', time.time()))
-        )
-    
-    def handle_dm_message(self, parsed, sender_ip):
-        """Handle DM messages"""
-        # Only process if it's for us
-        if parsed.get('TO') == self.user_id:
-            self.peer_manager.add_direct_message(
-                from_user=parsed['FROM'],
-                to_user=parsed['TO'],
-                content=parsed.get('CONTENT', ''),
-                timestamp=int(parsed.get('TIMESTAMP', time.time()))
-            )
+
+
+#------- FOLLOW
+
 
     def handle_follow(self, parsed, sender_ip):
         follower_id = parsed.get('FROM')
@@ -184,13 +166,8 @@ class LSNPClient:
 
         print(f"\nUser {unfollower_name} has unfollowed you.")
 
-
-
-    def _send_follow_action(self, target_user_id: str, action: str):
-        """
-        Build and send a FOLLOW or UNFOLLOW message to the target user.
-        `action` must be either 'FOLLOW' or 'UNFOLLOW'.
-        """
+    def send_follow_action(self, target_user_id: str, action: str):
+        #Send a FOLLOW or UNFOLLOW message to the target user.
         if action not in ("FOLLOW", "UNFOLLOW"):
             raise ValueError("action must be FOLLOW or UNFOLLOW")
 
@@ -216,11 +193,169 @@ class LSNPClient:
         else:
             utils.log(f"Cannot send {action} — no known IP for {target_user_id}", level="WARN")
 
-    
+
+#------- POST
+
+
+
+    def send_post(self, content: str, ttl: int = 60):
+        now = int(time.time())
+        token = f"{self.user_id}|{now + ttl}|broadcast"
+        message_id = secrets.token_hex(8)
+
+        msg = parser.format_message({
+            'TYPE': 'POST',
+            'USER_ID': self.user_id,
+            'CONTENT': content,
+            'TTL': ttl,
+            'MESSAGE_ID': message_id,
+            'TOKEN': token
+        })
+
+        for follower_id in self.peer_manager.followers:
+            peer_info = self.peer_manager.peers.get(follower_id)
+            if peer_info and peer_info.get('ip_address'):
+                self.network.send_message(msg, dest_ip=peer_info['ip_address'])
+
+    def handle_post(self, parsed, sender_ip):
+        from_user = parsed.get('USER_ID')
+        content = parsed.get('CONTENT')
+        token = parsed.get('TOKEN')
+
+        if not utils.validate_token(token, expected_scope='broadcast', expected_user_id=from_user):
+            utils.log("Invalid POST token", level="WARN", sender_ip=sender_ip, message_type="POST")
+            return
+
+        display_name = self.peer_manager.get_display_name(from_user)
+        print(f"\n POST from {display_name}: {content}")
+
+
+#------- DM
+
+    def send_dm(self, target_user_id: str, content: str):
+        # Send a private DM to the target user with chat-scoped token.
+        ttl_seconds = 3600
+        now         = int(time.time())
+        token       = f"{self.user_id}|{now + ttl_seconds}|chat"
+        message_id  = secrets.token_hex(8)
+
+        msg = parser.format_message({
+            'TYPE'      : 'DM',
+            'MESSAGE_ID': message_id,
+            'FROM'      : self.user_id,
+            'TO'        : target_user_id,
+            'TIMESTAMP' : now,
+            'CONTENT'   : content,
+            'TOKEN'     : token,
+        })
+
+        peer_info = self.peer_manager.peers.get(target_user_id)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent DM to {target_user_id} via {dest_ip}", level="INFO")
+        else:
+            utils.log(f"Cannot send DM — no known IP for {target_user_id}", level="WARN")
+
+    def handle_dm(self, parsed: dict, sender_ip: str):
+        from_user   = parsed.get('FROM')
+        to_user     = parsed.get('TO')
+        content     = parsed.get('CONTENT')
+        message_id  = parsed.get('MESSAGE_ID')
+        token       = parsed.get('TOKEN')
+
+        # Validate that the DM is addressed to this user
+        if to_user != self.user_id:
+            return
+
+        if not utils.validate_token(token, expected_scope='chat', expected_user_id=from_user):
+            utils.log("Invalid DM token", level="WARN", sender_ip=sender_ip, message_type="DM")
+            return
+
+        display_name = self.peer_manager.get_display_name(from_user)
+        print(f"\n[DM] {display_name}: {content}")
+
+        self.send_ack(message_id, sender_ip) #acknowledge
+
+#------- ACK
+
+
+    def send_ack(self, message_id: str, dest_ip: str):
+        msg = parser.format_message({
+            'TYPE': 'ACK',
+            'MESSAGE_ID': message_id,
+            'STATUS': 'RECEIVED'
+        })
+
+        self.network.send_message(msg, dest_ip=dest_ip)
+        utils.log(f"Sent ACK for {message_id} to {dest_ip}", level="INFO")
+
+    def handle_ack(self, parsed, sender_ip):
+        message_id = parsed.get('MESSAGE_ID')
+        status = parsed.get('STATUS')
+
+        if not message_id or not status:
+            utils.log("Malformed ACK received", level="WARN", sender_ip=sender_ip, message_type="ACK")
+            return
+
+        utils.log(f"Received ACK for {message_id} from {sender_ip} with status {status}", level="INFO")
+
+
+
+    #------- Like
+
+    def send_like(self, target_user_id: str, post_timestamp: int, action: str = "LIKE"):
+        # Sends a LIKE or UNLIKE message to the author of a post
+        if action not in ("LIKE", "UNLIKE"):
+            raise ValueError("action must be LIKE or UNLIKE")
+
+        ttl_seconds = 3600
+        now = int(time.time())
+        token = f"{self.user_id}|{now + ttl_seconds}|broadcast"
+
+        msg = parser.format_message({
+            'TYPE'           : 'LIKE',
+            'FROM'           : self.user_id,
+            'TO'             : target_user_id,
+            'POST_TIMESTAMP' : post_timestamp,
+            'ACTION'         : action,
+            'TIMESTAMP'      : now,
+            'TOKEN'          : token,
+        })
+
+        peer_info = self.peer_manager.peers.get(target_user_id)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent {action} for post {post_timestamp} to {target_user_id} via {dest_ip}", level="INFO")
+        else:
+            utils.log(f"Cannot send {action} — no known IP for {target_user_id}", level="WARN")
+
+    def handle_like(self, parsed, sender_ip):
+        from_user = parsed.get('FROM')
+        to_user = parsed.get('TO')
+        post_timestamp = parsed.get('POST_TIMESTAMP')
+        action = parsed.get('ACTION')
+        token = parsed.get('TOKEN')
+
+        if to_user != self.user_id:
+            return  # Not our post
+
+        if not utils.validate_token(token, expected_scope='broadcast', expected_user_id=from_user):
+            utils.log("Invalid LIKE token", level="WARN", sender_ip=sender_ip, message_type="LIKE")
+            return
+
+        # Display format: alice likes your post [post y message]
+        display_name = self.peer_manager.get_display_name(from_user)
+        verb = "likes" if action == "LIKE" else "unlikes"
+        print(f"\n{display_name} {verb} your post [post @ {post_timestamp}]")
+
+#--------------------------
+
     def run_cli(self):
         """Main CLI loop"""
         print(f"\n=== LSNP Client for {self.user_id} ===")
-        print("Commands: peers, posts [user_id], messages [user_id], verbose, exit")
+        print("Unknown command. Try: peers, follow <user_id>, unfollow <user_id>, message <user_id> <content>, verbose, exit")
         
         while True:
             try:
@@ -235,39 +370,51 @@ class LSNPClient:
                     break
                 elif command == "peers":
                     self.peer_manager.display_all_peers()
-                elif command == "posts":
-                    if len(cmd) > 1:
-                        self.peer_manager.display_posts_by_user(cmd[1])
-                    else:
-                        print("Usage: posts <user_id>")
-                elif command == "messages":
-                    if len(cmd) > 1:
-                        self.peer_manager.display_dms_for_user(cmd[1])
-                    else:
-                        print("Usage: messages <user_id>")
-
                 elif command == "follow":
                     if len(cmd) > 1:
-                        self._send_follow_action(cmd[1], "FOLLOW")
+                        self.send_follow_action(cmd[1], "FOLLOW")
                     else:
                         print("Usage: follow <user_id>")
 
                 elif command == "unfollow":
                     if len(cmd) > 1:
-                        self._send_follow_action(cmd[1], "UNFOLLOW")
+                        self.send_follow_action(cmd[1], "UNFOLLOW")
                     else:
                         print("Usage: unfollow <user_id>")
 
                 elif command == "followers":
                     self.peer_manager.display_followers(self.user_id)
 
+                elif command == "message":
+                    if len(cmd) > 2:
+                        to_user = cmd[1]
+                        content = " ".join(cmd[2:])
+                        self.send_dm(to_user, content)
+                    else:
+                        print("Usage: message <user_id> <content>")
+
+                elif command == "like":
+                    if len(cmd) > 2:
+                        to_user = cmd[1]
+                        post_timestamp = cmd[2]
+                        self.send_like(to_user, post_timestamp, action="LIKE")
+                    else:
+                        print("Usage: like <user_id> <post_timestamp>")
+
+                elif command == "unlike":
+                    if len(cmd) > 2:
+                        to_user = cmd[1]
+                        post_timestamp = cmd[2]
+                        self.send_like(to_user, post_timestamp, action="UNLIKE")
+                    else:
+                        print("Usage: unlike <user_id> <post_timestamp>")
 
                 elif command == "verbose":
                     import config
                     config.VERBOSE_MODE = not config.VERBOSE_MODE
                     print(f"Verbose mode: {'ON' if config.VERBOSE_MODE else 'OFF'}")
                 else:
-                    print("Unknown command. Try: peers, posts <user_id>, messages <user_id>, verbose, exit")
+                    print("Unknown command. Try: peers, follow <user_id>, unfollow <user_id>, message <user_id> <content>, verbose, exit")
             
             except KeyboardInterrupt:
                 break
