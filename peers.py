@@ -4,7 +4,6 @@ import utils
 class PeerManager:
     def __init__(self):
         self.peers = {}
-        self.direct_messages = []
         self.groups = {}
         self.followers = {}
 

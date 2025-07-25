@@ -385,6 +385,13 @@ class LSNPClient:
                 elif command == "followers":
                     self.peer_manager.display_followers(self.user_id)
 
+                elif command == "post":
+                    content = input("Enter post content: ").strip()
+                    if content:
+                        self.send_post(content)
+                    else:
+                        print("Post content cannot be empty.")
+
                 elif command == "message":
                     if len(cmd) > 2:
                         to_user = cmd[1]
