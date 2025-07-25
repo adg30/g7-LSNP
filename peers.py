@@ -135,7 +135,8 @@ class PeerManager:
         if not followers:
             print(f"{user_id} has no followers.")
             return
-        
+
         print(f"\n=== Followers of {user_id} ===")
-        for follower in followers:
-            print(f"- {follower}")
+        for follower_id in followers:
+            display_name = self.peers.get(follower_id, {}).get("display_name", follower_id)
+            print(f"- {display_name} (@{follower_id})")

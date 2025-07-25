@@ -75,7 +75,7 @@ class LSNPClient:
         msg_type = parsed.get('TYPE')
         user_id = parsed.get('USER_ID')
         
-        if not msg_type or not user_id:
+        if not msg_type:
             utils.log("Message missing TYPE or USER_ID", level="WARNING")
             return
         
@@ -128,18 +128,33 @@ class LSNPClient:
             )
 
     def handle_follow(self, parsed, sender_ip):
-        follower = parsed.get('USER_ID')
-        followed = parsed.get('TARGET')
+        follower_id = parsed.get('FROM')
+        followed_id = parsed.get('TO')
 
-        if followed == self.user_id:
-            self.peer_manager.add_follower(follower)
+        print("test")
+        if followed_id == self.user_id:
+            self.peer_manager.add_follower(followed_id, follower_id)
+
+            
+            follower_info = self.peer_manager.peers.get(follower_id, {})
+            follower_name = follower_info.get('display_name', follower_id)
+
+            print(f"\nUser {follower_name} has followed you.")
+            print("test2")
+
 
     def handle_unfollow(self, parsed, sender_ip):
-        unfollower = parsed.get('USER_ID')
-        unfollowed = parsed.get('TARGET')
+        unfollower_id = parsed.get('FROM')
+        unfollowed_id = parsed.get('TO')
 
-        if unfollowed == self.user_id:
-            self.peer_manager.remove_follower(unfollower)
+        if unfollowed_id == self.user_id:
+            self.peer_manager.remove_follower(unfollowed_id, unfollower_id)
+
+            unfollower_info = self.peer_manager.peers.get(unfollower_id, {})
+            unfollower_name = unfollower_info.get('display_name', unfollower_id)
+
+            print(f"\nUser {unfollower_name} has unfollowed you.")
+
 
     def _send_follow_action(self, target_user_id: str, action: str):
         """
@@ -162,7 +177,7 @@ class LSNPClient:
             'TIMESTAMP' : now,
             'TOKEN'     : token,
         })
-        
+
         peer_info = self.peer_manager.peers.get(target_user_id)
         if peer_info and peer_info.get('ip_address'):
             dest_ip = peer_info['ip_address']
@@ -214,7 +229,8 @@ class LSNPClient:
                         print("Usage: unfollow <user_id>")
 
                 elif command == "followers":
-                    self.peer_manager.display_followers()
+                    self.peer_manager.display_followers(self.user_id)
+
 
                 elif command == "verbose":
                     import config
