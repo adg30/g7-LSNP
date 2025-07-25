@@ -196,8 +196,6 @@ class LSNPClient:
 
 #------- POST
 
-
-
     def send_post(self, content: str, ttl: int = 60):
         now = int(time.time())
         token = f"{self.user_id}|{now + ttl}|broadcast"
@@ -216,6 +214,7 @@ class LSNPClient:
             peer_info = self.peer_manager.peers.get(follower_id)
             if peer_info and peer_info.get('ip_address'):
                 self.network.send_message(msg, dest_ip=peer_info['ip_address'])
+        
 
     def handle_post(self, parsed, sender_ip):
         from_user = parsed.get('USER_ID')
@@ -355,7 +354,7 @@ class LSNPClient:
     def run_cli(self):
         """Main CLI loop"""
         print(f"\n=== LSNP Client for {self.user_id} ===")
-        print("Unknown command. Try: peers, follow <user_id>, unfollow <user_id>, message <user_id> <content>, verbose, exit")
+        print("Unknown command. Try: peers, follow <user_id>, unfollow <user_id>, post message <user_id> <content>, verbose, exit")
         
         while True:
             try:
