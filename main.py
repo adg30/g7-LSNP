@@ -73,7 +73,7 @@ class LSNPClient:
             return
             
         msg_type = parsed.get('TYPE')
-        user_id = parsed.get('USER_ID')
+        #user_id = parsed.get('USER_ID')
         
         if not msg_type:
             utils.log("Message missing TYPE or USER_ID", level="WARNING")
@@ -196,7 +196,7 @@ class LSNPClient:
 
         ttl_seconds   = 3600
         now           = int(time.time())
-        token         = f"{self.user_id}|{now + ttl_seconds}|folle"
+        token         = f"{self.user_id}|{now + ttl_seconds}|follow"
         message_id    = secrets.token_hex(8)
 
         msg = parser.format_message({
