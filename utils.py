@@ -1,6 +1,8 @@
 import datetime
 import time
 
+revoked_tokens = set()
+
 def log(message, level="INFO", sender_ip=None, message_type=None, verbose=True):
     import config
     if config.VERBOSE_MODE and verbose:
@@ -17,20 +19,33 @@ def set_verbose_mode(mode):
     import config
     config.VERBOSE_MODE = mode
 
+def revoke_token(token: str):
+    revoked_tokens.add(token)
+
 def validate_token(token: str, expected_scope: str, expected_user_id: str) -> bool:
     try:
         user_id, expiry_str, scope = token.strip().split("|")
         expiry = int(expiry_str)
 
-        # validate token components
+        # Revocation check
+        if token in revoked_tokens:
+            log("Token has been revoked", level="WARN", message_type="TOKEN")
+            return False
+
+        # Validate token components
         if user_id != expected_user_id:
-            return False # wrong user
+            log(f"Token user mismatch: expected {expected_user_id}, got {user_id}", level="WARN", message_type="TOKEN")
+            return False
+
         if scope != expected_scope:
-            return False # diff scope
+            log(f"Token scope mismatch: expected '{expected_scope}', got '{scope}'", level="WARN", message_type="TOKEN")
+            return False
+
         if expiry < int(time.time()):
-            return False  # token expired
+            log("Token has expired", level="WARN", message_type="TOKEN")
+            return False
 
         return True
     except Exception as e:
-        print(f"[ERROR] Invalid token format: {e}")
+        log(f"Invalid token format: {e}", level="ERROR", message_type="TOKEN")
         return False

@@ -94,6 +94,9 @@ class LSNPClient:
             self.handle_ack(parsed, sender_ip)
         elif msg_type == "LIKE":
             self.handle_like(parsed, sender_ip)
+        elif msg_type == "REVOKE":
+            self.handle_revoke(parsed, sender_ip)
+
         # Add more message types later
     
     def handle_profile_message(self, parsed, sender_ip):
@@ -349,12 +352,36 @@ class LSNPClient:
         verb = "likes" if action == "LIKE" else "unlikes"
         print(f"\n{display_name} {verb} your post [post @ {post_timestamp}]")
 
+#-------------------------- revoke
+
+    def send_revoke(self, token: str):
+        """Broadcasts a REVOKE message for the given token."""
+        msg = parser.format_message({
+            'TYPE' : 'REVOKE',
+            'TOKEN': token
+        })
+
+        self.network.send_message(msg)
+
+    def handle_revoke(self, parsed: dict, sender_ip: str):
+        """Handles an incoming REVOKE message."""
+        token = parsed.get("TOKEN")  # <- this line MUST exist
+
+        if not token:
+            utils.log("REVOKE message missing token", level="WARN", sender_ip=sender_ip)
+            return
+
+        utils.revoke_token(token)
+        utils.log(f"Token revoked from {sender_ip}", level="INFO", message_type="REVOKE")
+
+
 #--------------------------
+
 
     def run_cli(self):
         """Main CLI loop"""
         print(f"\n=== LSNP Client for {self.user_id} ===")
-        print("Unknown command. Try: peers, follow <user_id>, unfollow <user_id>, post message <user_id> <content>, verbose, exit")
+        print("Unknown command. Try: peers, follow, unfollow, post, like, unlike, revoke, verbose, exit")
         
         while True:
             try:
@@ -415,12 +442,19 @@ class LSNPClient:
                     else:
                         print("Usage: unlike <user_id> <post_timestamp>")
 
+                elif command == "revoke":
+                    if len(cmd) == 2:
+                        token = cmd[1]
+                        self.send_revoke(token)
+                    else:
+                        print("Usage: revoke <token>")
+
                 elif command == "verbose":
                     import config
                     config.VERBOSE_MODE = not config.VERBOSE_MODE
                     print(f"Verbose mode: {'ON' if config.VERBOSE_MODE else 'OFF'}")
                 else:
-                    print("Unknown command. Try: peers, follow <user_id>, unfollow <user_id>, message <user_id> <content>, verbose, exit")
+                    print("Unknown command. Try: peers, follow, unfollow, post, like, unlike, revoke, verbose, exit")
             
             except KeyboardInterrupt:
                 break
