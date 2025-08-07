@@ -70,6 +70,45 @@ class LSNPClient:
             return parser.format_message(msg)
         self.start_periodic_task(profile_message, 300)
 
+    def start_disconnect_checker(self):
+        """Check for disconnected peers every 60 seconds"""
+        def check_disconnects():
+            self.peer_manager.check_disconnected_peers()
+        
+        threading.Thread(target=lambda: self._run_periodic_task(check_disconnects, 60), daemon=True).start()
+
+    def _run_periodic_task(self, task_func, interval_seconds):
+        """Run a periodic task with the given interval"""
+        while True:
+            try:
+                task_func()
+                time.sleep(interval_seconds)
+            except Exception as e:
+                utils.log(f"Error in periodic task: {e}", level="ERROR")
+                time.sleep(interval_seconds)
+
+    def send_initial_discovery(self):
+        """Send immediate PING and PROFILE messages to discover existing peers"""
+        utils.log("Sending initial discovery messages...", level="INFO")
+        
+        # Send immediate PING
+        ping_msg = f"TYPE: PING\nUSER_ID: {self.user_id}\n\n"
+        self.network.send_message(ping_msg)
+        
+        # Send immediate PROFILE
+        profile_msg = {
+            'TYPE': 'PROFILE',
+            'USER_ID': self.user_id,
+            'DISPLAY_NAME': self.display_name,
+            'STATUS': 'Available',
+        }
+        if hasattr(self, 'avatar_url') and self.avatar_url:
+            profile_msg['AVATAR_URL'] = self.avatar_url
+        if hasattr(self, 'avatar_hash') and self.avatar_hash:
+            profile_msg['AVATAR_HASH'] = self.avatar_hash
+        
+        self.network.send_message(parser.format_message(profile_msg))
+
     def handle_message(self, message_text, sender_ip):
         """Process incoming LSNP messages"""
         # Parse the message
@@ -87,7 +126,9 @@ class LSNPClient:
             return
         
         # Handle different message types
-        if msg_type == 'PROFILE':
+        if msg_type == 'PING':
+            self.handle_ping(parsed, sender_ip)
+        elif msg_type == 'PROFILE':
             self.handle_profile_message(parsed, sender_ip)
         elif msg_type == 'POST':
             self.handle_post(parsed, sender_ip)
@@ -122,6 +163,17 @@ class LSNPClient:
         elif msg_type == 'TICTACTOE_RESULT':
             self.handle_tictactoe_result(parsed, sender_ip)
         # Add more message types later
+    
+    def handle_ping(self, parsed, sender_ip):
+        """Handle PING messages for peer discovery"""
+        user_id = parsed.get('USER_ID')
+        if user_id and user_id != self.user_id:
+            # Add peer with basic info from PING
+            self.peer_manager.add_peer(
+                user_id=user_id,
+                ip_address=sender_ip
+            )
+            utils.log(f"Received PING from {user_id} at {sender_ip}", level="INFO")
     
     def handle_profile_message(self, parsed, sender_ip):
         """Handle PROFILE messages, including AVATAR fields if present"""
@@ -821,6 +873,7 @@ class LSNPClient:
         print("  - Use 'verbose' to see detailed protocol logs")
         print("  - Posts are sent only to your followers (follow each other first)")
         print("  - Use 'follow <user_id>' to follow someone before posting")
+        print("  - You'll be notified when peers come online/offline (🟢/🔴)")
         
         while True:
             try:
@@ -873,6 +926,7 @@ class LSNPClient:
                     print("  - Use 'verbose' to see detailed protocol logs")
                     print("  - Posts are sent only to your followers (follow each other first)")
                     print("  - Use 'follow <user_id>' to follow someone before posting")
+                    print("  - You'll be notified when peers come online/offline (🟢/🔴)")
                 elif command == "peers":
                     self.peer_manager.display_all_peers()
                 elif command == "follow":
@@ -1191,4 +1245,6 @@ if __name__ == "__main__":
     client = LSNPClient()
     client.start_periodic_ping()
     client.start_periodic_profile()
+    client.start_disconnect_checker()
+    client.send_initial_discovery()
     client.run_cli()

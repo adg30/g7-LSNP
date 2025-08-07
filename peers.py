@@ -6,9 +6,18 @@ class PeerManager:
         self.peers = {}
         self.groups = {}
         self.followers = {}
+        self.disconnect_threshold = 600  # 10 minutes - consider peer offline if not seen for this long
 
     def add_peer(self, user_id, display_name=None, status=None, ip_address=None, avatar_url=None, avatar_hash=None):
         current_time = time.time()
+        
+        # Check if this is a reconnection of a previously offline peer
+        was_offline = False
+        if user_id in self.peers:
+            old_peer = self.peers[user_id]
+            if current_time - old_peer.get('last_seen', 0) > self.disconnect_threshold:
+                was_offline = True
+                utils.log(f"Peer {user_id} reconnected after being offline", level="INFO")
         
         if user_id not in self.peers:
             # for new peers
@@ -18,7 +27,8 @@ class PeerManager:
                 'ip_address': ip_address,
                 'avatar_url': avatar_url,
                 'avatar_hash': avatar_hash,
-                'last_seen': current_time
+                'last_seen': current_time,
+                'online': True
             }
             utils.log(f"Added new peer: {user_id}", level="INFO")
         else:
@@ -35,7 +45,32 @@ class PeerManager:
             if avatar_hash:
                 peer['avatar_hash'] = avatar_hash
             peer['last_seen'] = current_time
+            peer['online'] = True
             utils.log(f"Updated peer: {user_id}", level="INFO")
+        
+        # Notify user of reconnection
+        if was_offline:
+            display_name = self.peers[user_id].get('display_name', user_id)
+            print(f"\n🟢 {display_name} is back online!")
+
+    def check_disconnected_peers(self):
+        """Check for peers that have gone offline and notify user"""
+        current_time = time.time()
+        for user_id, peer in list(self.peers.items()):
+            if peer.get('online', True) and (current_time - peer.get('last_seen', 0)) > self.disconnect_threshold:
+                peer['online'] = False
+                display_name = peer.get('display_name', user_id)
+                print(f"\n🔴 {display_name} went offline")
+                utils.log(f"Peer {user_id} marked as offline", level="INFO")
+
+    def get_online_peers(self):
+        """Get list of currently online peers"""
+        current_time = time.time()
+        online_peers = {}
+        for user_id, peer in self.peers.items():
+            if (current_time - peer.get('last_seen', 0)) <= self.disconnect_threshold:
+                online_peers[user_id] = peer
+        return online_peers
 
     def display_all_peers(self):
         if not self.peers:
@@ -44,7 +79,8 @@ class PeerManager:
         
         print("\n=== Known Peers ===")
         for user_id, peer in self.peers.items():
-            print(f"User ID: {user_id}")
+            status_icon = "🟢" if peer.get('online', True) else "🔴"
+            print(f"{status_icon} User ID: {user_id}")
             print(f"-->Display Name: {peer['display_name']}")
             print(f"-->Status: {peer['status']}")
             print(f"-->IP Address: {peer['ip_address']}")
