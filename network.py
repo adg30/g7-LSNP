@@ -50,22 +50,16 @@ class Network:
     def _listen_loop(self):
         while self.running:
             try:
-                # Set a timeout to prevent blocking indefinitely
-                self.sock.settimeout(1.0)
                 data, addr = self.sock.recvfrom(4096)
                 message = data.decode('utf-8')
                 sender_ip = addr[0]
                 utils.log(f"Received: {message}", level="RECV", sender_ip=sender_ip)
                 for handler in self.message_handlers:
-                    try:
-                        handler(message, sender_ip)
-                    except Exception as e:
-                        utils.log(f"Error in message handler: {e}", level="ERROR")
+                    handler(message, sender_ip)
             except socket.timeout:
                 continue
             except Exception as e:
                 utils.log(f"Error receiving message: {e}", level="ERROR")
-                # Don't break the loop on errors, just continue listening
 
     def stop_listening(self):
         self.running = False
