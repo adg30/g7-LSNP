@@ -697,7 +697,10 @@ class LSNPClient:
             'TIMESTAMP': now,
             'TOKEN': token,
         })
-        members = self.groups.get(group_id, {}).get('members', set())
+        group_info = self.groups.get(group_id, {})
+        members = group_info.get('members', set())
+        if isinstance(members, str):
+            members = set(members.split(','))
         for member in members:
             if member == self.user_id:
                 continue
@@ -850,43 +853,58 @@ class LSNPClient:
                 utils.log(f"Sent TICTACTOE_MOVE for {game_id} to {player} via {dest_ip}", level="INFO")
 
     def handle_tictactoe_move(self, parsed, sender_ip):
+        """Handle TICTACTOE_MOVE message"""
         game_id = parsed.get('GAME_ID')
         from_user = parsed.get('FROM')
-        position = int(parsed.get('POSITION', -1))
+        position = parsed.get('POSITION')
         token = parsed.get('TOKEN')
-        if game_id not in self.tictactoe_games or position < 0 or position > 8:
+        
+        if game_id not in self.tictactoe_games:
             return
         if not self._validate_token_or_log(token, expected_scope='game', expected_user_id=from_user, sender_ip=sender_ip, message_type='TICTACTOE_MOVE'):
             return
+            
         game = self.tictactoe_games[game_id]
         
         # Check if it's the player's turn
         if game['turn'] != from_user:
-            utils.log(f"Move rejected: not {from_user}'s turn in {game_id}", level="WARN")
+            utils.log(f"Move from {from_user} ignored - not their turn", level="WARN")
             return
             
-        # Check if position is already taken
-        if position in game['moves']:
-            utils.log(f"Duplicate move detected for {game_id} at {position}", level="WARN")
+        # Check if position is valid and empty
+        try:
+            position = int(position)
+            if position < 0 or position > 8:
+                utils.log(f"Invalid position {position} from {from_user}", level="WARN")
+                return
+        except ValueError:
+            utils.log(f"Invalid position format {position} from {from_user}", level="WARN")
             return
             
-        # Check if position is valid (not already occupied)
         if game['board'][position] != ' ':
-            utils.log(f"Invalid move: position {position} already occupied in {game_id}", level="WARN")
+            utils.log(f"Position {position} already occupied by {from_user}", level="WARN")
             return
             
-        game['moves'].append(position)
-        mark = 'X' if from_user == game['players'][0] else 'O'
-        game['board'][position] = mark
-        game['turn'] = [p for p in game['players'] if p != from_user][0]
-        utils.log(f"Received TICTACTOE_MOVE in {game_id} from {from_user} at {position}", level="INFO")
-        print(f"\n[TICTACTOE:{game_id}] {from_user} played {mark} at {position}")
+        # Make the move
+        symbol = 'X' if from_user == game['players'][0] else 'O'
+        game['board'][position] = symbol
+        game['moves'].append({'player': from_user, 'position': position, 'symbol': symbol})
         
-        # Check for win or draw
+        # Switch turns
+        game['turn'] = game['players'][1] if game['turn'] == game['players'][0] else game['players'][0]
+        
+        display_name = self.peer_manager.get_display_name(from_user)
+        print(f"\n[TICTACTOE:{game_id}] {display_name} placed {symbol} at position {position}")
+        
+        # Display the updated board (RFC requirement: "Print the board")
+        self._display_game_board(game_id)
+        
+        # Check for game result
         result = self._check_game_result(game_id)
         if result:
             self.send_tictactoe_result(game_id, result)
             game['status'] = 'finished'
+            utils.log(f"Game {game_id} finished: {result}", level="INFO")
             print(f"\n[TICTACTOE:{game_id}] Game finished: {result}")
 
     def _check_game_result(self, game_id):
@@ -963,6 +981,9 @@ class LSNPClient:
         self.tictactoe_games[game_id]['status'] = 'active'
         display_name = self.peer_manager.get_display_name(from_user)
         print(f"\n[TICTACTOE:{game_id}] {display_name} accepted the game invite!")
+        print(f"[TICTACTOE:{game_id}] Game started! It's your turn to make the first move.")
+        # Display the initial board
+        self._display_game_board(game_id)
 
     def handle_tictactoe_reject(self, parsed, sender_ip):
         """Handle TICTACTOE_REJECT message"""
@@ -977,6 +998,21 @@ class LSNPClient:
         print(f"\n[TICTACTOE:{game_id}] {display_name} rejected the game invite.")
         if game_id in self.tictactoe_games:
             del self.tictactoe_games[game_id]
+
+    def _display_game_board(self, game_id):
+        """Display the current game board"""
+        if game_id not in self.tictactoe_games:
+            return
+        game = self.tictactoe_games[game_id]
+        board = game['board']
+        print(f"\n=== Tic Tac Toe Board ({game_id}) ===")
+        for i in range(0, 9, 3):
+            print(f" {board[i]} | {board[i+1]} | {board[i+2]} ")
+            if i < 6:
+                print("---+---+---")
+        print(f"Turn: {self.peer_manager.get_display_name(game['turn'])}")
+        print(f"Status: {game['status']}")
+        print("Positions: 0|1|2, 3|4|5, 6|7|8")
 
     def _validate_token_or_log(self, token, expected_scope, expected_user_id, sender_ip=None, message_type=None):
         valid = utils.validate_token(token, expected_scope=expected_scope, expected_user_id=expected_user_id)
@@ -1025,12 +1061,17 @@ class LSNPClient:
         print("\n=== EXAMPLES ===")
         print("  follow user@192.168.1.4")
         print("  message user@192.168.1.4 Hello there!")
+        print("  like user@192.168.1.4 1234567890")
         print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
         print("  sendfile user@192.168.1.4 test.txt")
+        print("  ttt invite user@192.168.1.4")
         print("\n=== TIPS ===")
         print("  - You can use display names (like 'pc') instead of full user IDs")
         print("  - Use 'peers' to see all available users and their IDs")
         print("  - Use 'verbose' to see detailed protocol logs")
+        print("  - For like/unlike: use the timestamp from the post you want to like")
+        print("  - For TTT: positions are 0-8 (top-left to bottom-right)")
+        print("  - For groups: members should be comma-separated user IDs")
         
         while True:
             try:
@@ -1075,12 +1116,17 @@ class LSNPClient:
                     print("\n=== EXAMPLES ===")
                     print("  follow user@192.168.1.4")
                     print("  message user@192.168.1.4 Hello there!")
+                    print("  like user@192.168.1.4 1234567890")
                     print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
                     print("  sendfile user@192.168.1.4 test.txt")
+                    print("  ttt invite user@192.168.1.4")
                     print("\n=== TIPS ===")
                     print("  - You can use display names (like 'pc') instead of full user IDs")
                     print("  - Use 'peers' to see all available users and their IDs")
                     print("  - Use 'verbose' to see detailed protocol logs")
+                    print("  - For like/unlike: use the timestamp from the post you want to like")
+                    print("  - For TTT: positions are 0-8 (top-left to bottom-right)")
+                    print("  - For groups: members should be comma-separated user IDs")
                 elif command == "peers":
                     self.peer_manager.display_all_peers()
                 elif command == "follow":
@@ -1158,6 +1204,7 @@ class LSNPClient:
                     else:
                         print("Usage: like <user_id> <post_timestamp>")
                         print("Example: like user@192.168.1.4 1234567890")
+                        print("Note: Use the timestamp from the post you want to like")
 
                 elif command == "unlike":
                     if len(cmd) > 2:
@@ -1175,6 +1222,7 @@ class LSNPClient:
                     else:
                         print("Usage: unlike <user_id> <post_timestamp>")
                         print("Example: unlike user@192.168.1.4 1234567890")
+                        print("Note: Use the timestamp from the post you want to unlike")
 
                 elif command == "revoke":
                     if len(cmd) == 2:
