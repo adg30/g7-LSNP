@@ -829,7 +829,9 @@ class LSNPClient:
                     if subcmd == "create" and len(cmd) > 4:
                         group_id = cmd[2]
                         group_name = cmd[3]
-                        members = cmd[4].split(',')
+                        # Join all remaining arguments as members (comma-separated)
+                        members_str = " ".join(cmd[4:])
+                        members = [m.strip() for m in members_str.split(',') if m.strip()]
                         self.send_group_create(group_id, group_name, members)
                         print(f"Group {group_name} created with members: {members}")
                     elif subcmd == "message" and len(cmd) > 3:

@@ -7,7 +7,7 @@ class PeerManager:
         self.groups = {}
         self.followers = {}
 
-    def add_peer(self, user_id, display_name=None, status=None, ip_address=None):
+    def add_peer(self, user_id, display_name=None, status=None, ip_address=None, avatar_url=None, avatar_hash=None):
         current_time = time.time()
         
         if user_id not in self.peers:
@@ -16,6 +16,8 @@ class PeerManager:
                 'display_name': display_name or user_id, # if display_name is None
                 'status': status, 
                 'ip_address': ip_address,
+                'avatar_url': avatar_url,
+                'avatar_hash': avatar_hash,
                 'last_seen': current_time
             }
             utils.log(f"Added new peer: {user_id}", level="INFO")
@@ -28,6 +30,10 @@ class PeerManager:
                 peer['status'] = status
             if ip_address:
                 peer['ip_address'] = ip_address
+            if avatar_url:
+                peer['avatar_url'] = avatar_url
+            if avatar_hash:
+                peer['avatar_hash'] = avatar_hash
             peer['last_seen'] = current_time
             utils.log(f"Updated peer: {user_id}", level="INFO")
 
@@ -42,6 +48,10 @@ class PeerManager:
             print(f"-->Display Name: {peer['display_name']}")
             print(f"-->Status: {peer['status']}")
             print(f"-->IP Address: {peer['ip_address']}")
+            if peer.get('avatar_url'):
+                print(f"-->Avatar URL: {peer['avatar_url']}")
+            if peer.get('avatar_hash'):
+                print(f"-->Avatar Hash: {peer['avatar_hash']}")
             if peer['last_seen']:
                 time_diff = time.time() - peer['last_seen']
                 print(f"-->Last Seen: {int(time_diff)} seconds ago")
