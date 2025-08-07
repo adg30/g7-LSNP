@@ -725,11 +725,47 @@ class LSNPClient:
             utils.log_message_drop("invalid_token", message_type, sender_ip)
         return valid
 
+    def get_user_id_by_display_name(self, display_name):
+        """Find user ID by display name"""
+        for user_id, peer_info in self.peer_manager.peers.items():
+            if peer_info.get('display_name') == display_name:
+                return user_id
+        return None
+
     def run_cli(self):
         """Main CLI loop"""
         print(f"\n=== LSNP Client for {self.user_id} ===")
-        print("Commands: peers, follow, unfollow, post, message, like, unlike, revoke, verbose")
-        print("New: sendfile, group, ttt, exit")
+        print("=== BASIC COMMANDS (Milestone 2) ===")
+        print("  peers                    - Show all discovered peers")
+        print("  follow <user_id>         - Follow a user (use full user@IP format)")
+        print("  unfollow <user_id>       - Unfollow a user")
+        print("  followers                - Show your followers")
+        print("  post                     - Create a new post")
+        print("  message <user_id> <text> - Send private message")
+        print("  like <user_id> <timestamp> - Like a post")
+        print("  unlike <user_id> <timestamp> - Unlike a post")
+        print("  revoke <token>           - Revoke a token")
+        print("  verbose                  - Toggle verbose logging")
+        print("\n=== ADVANCED COMMANDS (Milestone 3) ===")
+        print("  sendfile <user_id> <file> - Send file to user")
+        print("  group create <id> <name> <members> - Create group (members: user1,user2)")
+        print("  group message <id> <text> - Send message to group")
+        print("  group list               - List your groups")
+        print("  group members <id>       - Show group members")
+        print("  ttt invite <user_id>     - Invite to Tic Tac Toe")
+        print("  ttt move <game_id> <pos> - Make move (0-8)")
+        print("  ttt board <game_id>      - Show game board")
+        print("  ttt list                 - List active games")
+        print("\n  exit                     - Exit program")
+        print("\n=== EXAMPLES ===")
+        print("  follow user@192.168.1.4")
+        print("  message user@192.168.1.4 Hello there!")
+        print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
+        print("  sendfile user@192.168.1.4 test.txt")
+        print("\n=== TIPS ===")
+        print("  - You can use display names (like 'pc') instead of full user IDs")
+        print("  - Use 'peers' to see all available users and their IDs")
+        print("  - Use 'verbose' to see detailed protocol logs")
         
         while True:
             try:
@@ -742,19 +778,72 @@ class LSNPClient:
                 
                 if command == "exit":
                     break
+                elif command == "help":
+                    print(f"\n=== LSNP Client for {self.user_id} ===")
+                    print("=== BASIC COMMANDS (Milestone 2) ===")
+                    print("  peers                    - Show all discovered peers")
+                    print("  follow <user_id>         - Follow a user (use full user@IP format)")
+                    print("  unfollow <user_id>       - Unfollow a user")
+                    print("  followers                - Show your followers")
+                    print("  post                     - Create a new post")
+                    print("  message <user_id> <text> - Send private message")
+                    print("  like <user_id> <timestamp> - Like a post")
+                    print("  unlike <user_id> <timestamp> - Unlike a post")
+                    print("  revoke <token>           - Revoke a token")
+                    print("  verbose                  - Toggle verbose logging")
+                    print("\n=== ADVANCED COMMANDS (Milestone 3) ===")
+                    print("  sendfile <user_id> <file> - Send file to user")
+                    print("  group create <id> <name> <members> - Create group (members: user1,user2)")
+                    print("  group message <id> <text> - Send message to group")
+                    print("  group list               - List your groups")
+                    print("  group members <id>       - Show group members")
+                    print("  ttt invite <user_id>     - Invite to Tic Tac Toe")
+                    print("  ttt move <game_id> <pos> - Make move (0-8)")
+                    print("  ttt board <game_id>      - Show game board")
+                    print("  ttt list                 - List active games")
+                    print("\n  exit                     - Exit program")
+                    print("\n=== EXAMPLES ===")
+                    print("  follow user@192.168.1.4")
+                    print("  message user@192.168.1.4 Hello there!")
+                    print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
+                    print("  sendfile user@192.168.1.4 test.txt")
+                    print("\n=== TIPS ===")
+                    print("  - You can use display names (like 'pc') instead of full user IDs")
+                    print("  - Use 'peers' to see all available users and their IDs")
+                    print("  - Use 'verbose' to see detailed protocol logs")
                 elif command == "peers":
                     self.peer_manager.display_all_peers()
                 elif command == "follow":
                     if len(cmd) > 1:
-                        self.send_follow_action(cmd[1], "FOLLOW")
+                        target = cmd[1]
+                        # Try to find user ID by display name if not full user ID
+                        if not target.startswith("user@"):
+                            user_id = self.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
+                        self.send_follow_action(target, "FOLLOW")
                     else:
                         print("Usage: follow <user_id>")
+                        print("Example: follow user@192.168.1.4")
 
                 elif command == "unfollow":
                     if len(cmd) > 1:
-                        self.send_follow_action(cmd[1], "UNFOLLOW")
+                        target = cmd[1]
+                        # Try to find user ID by display name if not full user ID
+                        if not target.startswith("user@"):
+                            user_id = self.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
+                        self.send_follow_action(target, "UNFOLLOW")
                     else:
                         print("Usage: unfollow <user_id>")
+                        print("Example: unfollow user@192.168.1.4")
 
                 elif command == "followers":
                     self.peer_manager.display_followers(self.user_id)
@@ -768,27 +857,54 @@ class LSNPClient:
 
                 elif command == "message":
                     if len(cmd) > 2:
-                        to_user = cmd[1]
+                        target = cmd[1]
+                        # Try to find user ID by display name if not full user ID
+                        if not target.startswith("user@"):
+                            user_id = self.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
                         content = " ".join(cmd[2:])
-                        self.send_dm(to_user, content)
+                        self.send_dm(target, content)
                     else:
                         print("Usage: message <user_id> <content>")
+                        print("Example: message user@192.168.1.4 Hello there!")
 
                 elif command == "like":
                     if len(cmd) > 2:
-                        to_user = cmd[1]
+                        target = cmd[1]
+                        # Try to find user ID by display name if not full user ID
+                        if not target.startswith("user@"):
+                            user_id = self.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
                         post_timestamp = cmd[2]
-                        self.send_like(to_user, post_timestamp, action="LIKE")
+                        self.send_like(target, post_timestamp, action="LIKE")
                     else:
                         print("Usage: like <user_id> <post_timestamp>")
+                        print("Example: like user@192.168.1.4 1234567890")
 
                 elif command == "unlike":
                     if len(cmd) > 2:
-                        to_user = cmd[1]
+                        target = cmd[1]
+                        # Try to find user ID by display name if not full user ID
+                        if not target.startswith("user@"):
+                            user_id = self.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
                         post_timestamp = cmd[2]
-                        self.send_like(to_user, post_timestamp, action="UNLIKE")
+                        self.send_like(target, post_timestamp, action="UNLIKE")
                     else:
                         print("Usage: unlike <user_id> <post_timestamp>")
+                        print("Example: unlike user@192.168.1.4 1234567890")
 
                 elif command == "revoke":
                     if len(cmd) == 2:
@@ -796,6 +912,7 @@ class LSNPClient:
                         self.send_revoke(token)
                     else:
                         print("Usage: revoke <token>")
+                        print("Example: revoke user@192.168.1.4|1234567890|follow")
 
                 elif command == "verbose":
                     import config
@@ -805,13 +922,21 @@ class LSNPClient:
                 # --- NEW MILESTONE 3 COMMANDS ---
                 elif command == "sendfile":
                     if len(cmd) > 2:
-                        target_user = cmd[1]
+                        target = cmd[1]
+                        # Try to find user ID by display name if not full user ID
+                        if not target.startswith("user@"):
+                            user_id = self.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
                         filename = cmd[2]
                         try:
                             import os
                             filesize = os.path.getsize(filename)
                             filehash = str(hash(filename))  # Simple hash for demo
-                            self.send_file_offer(target_user, filename, filesize, filehash)
+                            self.send_file_offer(target, filename, filesize, filehash)
                             print(f"File offer sent for {filename}")
                         except FileNotFoundError:
                             print(f"File {filename} not found")
@@ -819,10 +944,16 @@ class LSNPClient:
                             print(f"Error: {e}")
                     else:
                         print("Usage: sendfile <user_id> <filename>")
+                        print("Example: sendfile user@192.168.1.4 test.txt")
 
                 elif command == "group":
                     if len(cmd) < 2:
                         print("Usage: group <create|message|list|members> [args...]")
+                        print("Examples:")
+                        print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
+                        print("  group message mygroup Hello group!")
+                        print("  group list")
+                        print("  group members mygroup")
                         continue
                     
                     subcmd = cmd[1].lower()
@@ -832,8 +963,22 @@ class LSNPClient:
                         # Join all remaining arguments as members (comma-separated)
                         members_str = " ".join(cmd[4:])
                         members = [m.strip() for m in members_str.split(',') if m.strip()]
-                        self.send_group_create(group_id, group_name, members)
-                        print(f"Group {group_name} created with members: {members}")
+                        # Convert display names to user IDs
+                        resolved_members = []
+                        for member in members:
+                            if member.startswith("user@"):
+                                resolved_members.append(member)
+                            else:
+                                user_id = self.get_user_id_by_display_name(member)
+                                if user_id:
+                                    resolved_members.append(user_id)
+                                else:
+                                    print(f"Warning: User '{member}' not found, skipping")
+                        if resolved_members:
+                            self.send_group_create(group_id, group_name, resolved_members)
+                            print(f"Group {group_name} created with members: {resolved_members}")
+                        else:
+                            print("No valid members found for group creation")
                     elif subcmd == "message" and len(cmd) > 3:
                         group_id = cmd[2]
                         content = " ".join(cmd[3:])
@@ -852,23 +997,42 @@ class LSNPClient:
                             members = self.groups[group_id]['members']
                             print(f"\n=== Members of {group_id} ===")
                             for member in members:
-                                print(f"- {member}")
+                                display_name = self.peer_manager.get_display_name(member)
+                                print(f"- {display_name} ({member})")
                         else:
                             print(f"Group {group_id} not found")
                     else:
                         print("Usage: group <create|message|list|members> [args...]")
+                        print("Examples:")
+                        print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
+                        print("  group message mygroup Hello group!")
+                        print("  group list")
+                        print("  group members mygroup")
 
                 elif command == "ttt":
                     if len(cmd) < 2:
                         print("Usage: ttt <invite|move|board|list> [args...]")
+                        print("Examples:")
+                        print("  ttt invite user@192.168.1.4")
+                        print("  ttt move game_1234567890 4")
+                        print("  ttt board game_1234567890")
+                        print("  ttt list")
                         continue
                     
                     subcmd = cmd[1].lower()
                     if subcmd == "invite" and len(cmd) > 2:
-                        target_user = cmd[2]
+                        target = cmd[2]
+                        # Try to find user ID by display name if not full user ID
+                        if not target.startswith("user@"):
+                            user_id = self.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
                         game_id = f"game_{int(time.time())}"
-                        self.send_tictactoe_invite(target_user, game_id)
-                        print(f"Tic Tac Toe invite sent to {target_user} (game_id: {game_id})")
+                        self.send_tictactoe_invite(target, game_id)
+                        print(f"Tic Tac Toe invite sent to {target} (game_id: {game_id})")
                     elif subcmd == "move" and len(cmd) > 3:
                         game_id = cmd[2]
                         try:
@@ -903,9 +1067,16 @@ class LSNPClient:
                             print("No active games")
                     else:
                         print("Usage: ttt <invite|move|board|list> [args...]")
+                        print("Examples:")
+                        print("  ttt invite user@192.168.1.4")
+                        print("  ttt move game_1234567890 4")
+                        print("  ttt board game_1234567890")
+                        print("  ttt list")
 
                 else:
-                    print("Unknown command. Try: peers, follow, unfollow, post, message, like, unlike, revoke, verbose, sendfile, group, ttt, exit")
+                    print("Unknown command. Type 'help' for usage information or try:")
+                    print("  peers, follow, unfollow, post, message, like, unlike, revoke, verbose")
+                    print("  sendfile, group, ttt, exit")
             
             except KeyboardInterrupt:
                 break
