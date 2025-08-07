@@ -172,6 +172,11 @@ class LSNPClient:
                 ip_address=sender_ip
             )
             utils.log(f"Received PING from {user_id} at {sender_ip}", level="INFO")
+            
+            # Respond with our own PING to help with discovery
+            response_ping = f"TYPE: PING\nUSER_ID: {self.user_id}\n\n"
+            self.network.send_message(response_ping, dest_ip=sender_ip)
+            utils.log(f"Sent PING response to {sender_ip}", level="INFO")
     
     def handle_profile_message(self, parsed, sender_ip):
         """Handle PROFILE messages, including AVATAR fields if present"""
@@ -183,7 +188,22 @@ class LSNPClient:
             avatar_url=parsed.get('AVATAR_URL'),
             avatar_hash=parsed.get('AVATAR_HASH'),
         )
-        utils.log(f"Received PROFILE from {parsed['USER_ID']} at {sender_ip}", level="INFO")
+        
+        # Respond with our own PROFILE to help with discovery
+        profile_msg = {
+            'TYPE': 'PROFILE',
+            'USER_ID': self.user_id,
+            'DISPLAY_NAME': self.display_name,
+            'STATUS': 'Available',
+        }
+        if hasattr(self, 'avatar_url') and self.avatar_url:
+            profile_msg['AVATAR_URL'] = self.avatar_url
+        if hasattr(self, 'avatar_hash') and self.avatar_hash:
+            profile_msg['AVATAR_HASH'] = self.avatar_hash
+        
+        response_profile = parser.format_message(profile_msg)
+        self.network.send_message(response_profile, dest_ip=sender_ip)
+        utils.log(f"Sent PROFILE response to {sender_ip}", level="INFO")
 
 
 #------- FOLLOW
