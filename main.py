@@ -109,6 +109,8 @@ class LSNPClient:
             self.handle_file_chunk(parsed, sender_ip)
         elif msg_type == 'FILE_RECEIVED':
             self.handle_file_received(parsed, sender_ip)
+        elif msg_type == 'FILE_REJECT':
+            self.handle_file_reject(parsed, sender_ip)
         elif msg_type == 'GROUP_CREATE':
             self.handle_group_create(parsed, sender_ip)
         elif msg_type == 'GROUP_UPDATE':
@@ -121,6 +123,10 @@ class LSNPClient:
             self.handle_tictactoe_move(parsed, sender_ip)
         elif msg_type == 'TICTACTOE_RESULT':
             self.handle_tictactoe_result(parsed, sender_ip)
+        elif msg_type == 'TICTACTOE_ACCEPT':
+            self.handle_tictactoe_accept(parsed, sender_ip)
+        elif msg_type == 'TICTACTOE_REJECT':
+            self.handle_tictactoe_reject(parsed, sender_ip)
         # Add more message types later
     
     def handle_profile_message(self, parsed, sender_ip):
@@ -426,7 +432,65 @@ class LSNPClient:
         display_name = self.peer_manager.get_display_name(from_user)
         utils.log_protocol_event("FILE_OFFER_RECEIVED", f"file={filename} size={filesize} from={display_name}", sender_ip, "FILE_OFFER")
         print(f"\n[FILE_OFFER] {display_name} wants to send you '{filename}' ({filesize} bytes, hash: {filehash})")
-        # TODO: Prompt user to accept/reject, then send ACK or start receiving chunks
+        
+        # Store file offer for user interaction
+        file_id = f"{from_user}_{filename}_{int(time.time())}"
+        self.incoming_files[file_id] = {
+            'filename': filename,
+            'filesize': int(filesize),
+            'filehash': filehash,
+            'from': from_user,
+            'chunks': {},
+            'total_chunks': 0,
+            'status': 'pending'
+        }
+        print(f"File ID: {file_id}")
+        print("Commands: acceptfile <file_id> or rejectfile <file_id>")
+
+    def send_file_accept(self, file_id):
+        """Send acceptance of file transfer"""
+        if file_id not in self.incoming_files:
+            print(f"File {file_id} not found")
+            return
+            
+        file_info = self.incoming_files[file_id]
+        from_user = file_info['from']
+        
+        # Send ACK to start file transfer
+        self.send_ack(f"file_accept_{file_id}", self.peer_manager.peers.get(from_user, {}).get('ip_address'))
+        file_info['status'] = 'accepted'
+        print(f"File transfer accepted: {file_id}")
+
+    def send_file_reject(self, file_id):
+        """Send rejection of file transfer"""
+        if file_id not in self.incoming_files:
+            print(f"File {file_id} not found")
+            return
+            
+        file_info = self.incoming_files[file_id]
+        from_user = file_info['from']
+        
+        # Send rejection message
+        now = int(time.time())
+        ttl_seconds = 3600
+        token = f"{self.user_id}|{now + ttl_seconds}|file"
+        msg = parser.format_message({
+            'TYPE': 'FILE_REJECT',
+            'FROM': self.user_id,
+            'TO': from_user,
+            'FILE_ID': file_id,
+            'TIMESTAMP': now,
+            'TOKEN': token,
+        })
+        
+        peer_info = self.peer_manager.peers.get(from_user)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent FILE_REJECT for {file_id} to {from_user}", level="INFO")
+        
+        del self.incoming_files[file_id]
+        print(f"File transfer rejected: {file_id}")
 
     def send_file_chunk(self, target_user_id, file_id, chunk_index, chunk_data):
         now = int(time.time())
@@ -466,7 +530,49 @@ class LSNPClient:
             self.incoming_files[file_id] = {'chunks': {}, 'from': from_user}
         self.incoming_files[file_id]['chunks'][chunk_index] = chunk_data
         utils.log(f"Received FILE_CHUNK {chunk_index} for {file_id} from {from_user}", level="INFO")
-        # TODO: Check if all chunks received, reassemble, verify hash, send FILE_RECEIVED
+        
+        # Check if all chunks received and reassemble file
+        self._check_file_completion(file_id)
+
+    def _check_file_completion(self, file_id):
+        """Check if all file chunks are received and reassemble the file"""
+        if file_id not in self.incoming_files:
+            return
+            
+        file_info = self.incoming_files[file_id]
+        chunks = file_info['chunks']
+        
+        # Estimate total chunks based on file size (assuming 1KB chunks)
+        estimated_chunks = (file_info['filesize'] + 1023) // 1024
+        
+        # Check if we have enough chunks to attempt reassembly
+        if len(chunks) >= estimated_chunks:
+            try:
+                # Reassemble file
+                file_data = b''
+                for i in range(estimated_chunks):
+                    if i in chunks:
+                        file_data += chunks[i]
+                    else:
+                        utils.log(f"Missing chunk {i} for {file_id}", level="WARN")
+                        return
+                
+                # Save file
+                filename = file_info['filename']
+                with open(filename, 'wb') as f:
+                    f.write(file_data)
+                
+                # Send completion acknowledgment
+                self.send_file_received(file_info['from'], file_id)
+                
+                # Clean up
+                del self.incoming_files[file_id]
+                
+                print(f"\n[FILE_TRANSFER] File '{filename}' received and saved successfully!")
+                utils.log(f"File {file_id} reassembled and saved as {filename}", level="INFO")
+                
+            except Exception as e:
+                utils.log(f"Error reassembling file {file_id}: {e}", level="ERROR")
 
     def send_file_received(self, target_user_id, file_id):
         now = int(time.time())
@@ -499,6 +605,20 @@ class LSNPClient:
             return
         utils.log(f"File transfer complete: {file_id} acknowledged by {from_user}", level="INFO")
         print(f"\n[FILE_TRANSFER] File {file_id} successfully received by {from_user}.")
+
+    def handle_file_reject(self, parsed, sender_ip):
+        """Handle FILE_REJECT message"""
+        file_id = parsed.get('FILEID')
+        from_user = parsed.get('FROM')
+        
+        if file_id:
+            utils.log(f"File {file_id} was rejected by {from_user}", level="INFO")
+            # Remove from outgoing files if tracking
+            if hasattr(self, 'outgoing_files') and file_id in self.outgoing_files:
+                del self.outgoing_files[file_id]
+            print(f"\n[FILE_TRANSFER] File {file_id} was rejected by {from_user}")
+        else:
+            utils.log("FILE_REJECT missing FILEID", level="WARN")
 
     # --- GROUP MANAGEMENT (Milestone 3) ---
     def send_group_create(self, group_id, group_name, members):
@@ -633,12 +753,79 @@ class LSNPClient:
             'board': [' '] * 9,
             'turn': from_user,
             'moves': [],
-            'status': 'active',
+            'status': 'invited'
         }
         display_name = self.peer_manager.get_display_name(from_user)
         utils.log_protocol_event("GAME_INVITE_RECEIVED", f"game={game_id} from={display_name}", sender_ip, "TICTACTOE_INVITE")
         print(f"\n[TICTACTOE] Game invite from {display_name} (game_id: {game_id})")
-        # TODO: Prompt user to accept/reject, then send move or result
+        print("Commands: ttt accept <game_id> or ttt reject <game_id>")
+
+    def send_tictactoe_accept(self, game_id):
+        """Accept a Tic Tac Toe game invite"""
+        if game_id not in self.tictactoe_games:
+            print(f"Game {game_id} not found")
+            return
+            
+        game = self.tictactoe_games[game_id]
+        if game['status'] != 'invited':
+            print(f"Game {game_id} is not in invited status")
+            return
+            
+        game['status'] = 'active'
+        print(f"Game {game_id} accepted and started!")
+        
+        # Send acceptance to other player
+        now = int(time.time())
+        ttl_seconds = 3600
+        token = f"{self.user_id}|{now + ttl_seconds}|game"
+        msg = parser.format_message({
+            'TYPE': 'TICTACTOE_ACCEPT',
+            'GAME_ID': game_id,
+            'FROM': self.user_id,
+            'TIMESTAMP': now,
+            'TOKEN': token,
+        })
+        
+        other_player = [p for p in game['players'] if p != self.user_id][0]
+        peer_info = self.peer_manager.peers.get(other_player)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent TICTACTOE_ACCEPT for {game_id} to {other_player}", level="INFO")
+
+    def send_tictactoe_reject(self, game_id):
+        """Reject a Tic Tac Toe game invite"""
+        if game_id not in self.tictactoe_games:
+            print(f"Game {game_id} not found")
+            return
+            
+        game = self.tictactoe_games[game_id]
+        if game['status'] != 'invited':
+            print(f"Game {game_id} is not in invited status")
+            return
+            
+        # Send rejection to other player
+        now = int(time.time())
+        ttl_seconds = 3600
+        token = f"{self.user_id}|{now + ttl_seconds}|game"
+        msg = parser.format_message({
+            'TYPE': 'TICTACTOE_REJECT',
+            'GAME_ID': game_id,
+            'FROM': self.user_id,
+            'TIMESTAMP': now,
+            'TOKEN': token,
+        })
+        
+        other_player = [p for p in game['players'] if p != self.user_id][0]
+        peer_info = self.peer_manager.peers.get(other_player)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent TICTACTOE_REJECT for {game_id} to {other_player}", level="INFO")
+        
+        # Remove game
+        del self.tictactoe_games[game_id]
+        print(f"Game {game_id} rejected")
 
     def send_tictactoe_move(self, game_id, position):
         now = int(time.time())
@@ -672,16 +859,62 @@ class LSNPClient:
         if not self._validate_token_or_log(token, expected_scope='game', expected_user_id=from_user, sender_ip=sender_ip, message_type='TICTACTOE_MOVE'):
             return
         game = self.tictactoe_games[game_id]
+        
+        # Check if it's the player's turn
+        if game['turn'] != from_user:
+            utils.log(f"Move rejected: not {from_user}'s turn in {game_id}", level="WARN")
+            return
+            
+        # Check if position is already taken
         if position in game['moves']:
             utils.log(f"Duplicate move detected for {game_id} at {position}", level="WARN")
             return
+            
+        # Check if position is valid (not already occupied)
+        if game['board'][position] != ' ':
+            utils.log(f"Invalid move: position {position} already occupied in {game_id}", level="WARN")
+            return
+            
         game['moves'].append(position)
         mark = 'X' if from_user == game['players'][0] else 'O'
         game['board'][position] = mark
         game['turn'] = [p for p in game['players'] if p != from_user][0]
         utils.log(f"Received TICTACTOE_MOVE in {game_id} from {from_user} at {position}", level="INFO")
         print(f"\n[TICTACTOE:{game_id}] {from_user} played {mark} at {position}")
-        # TODO: Check for win/draw, send TICTACTOE_RESULT if needed
+        
+        # Check for win or draw
+        result = self._check_game_result(game_id)
+        if result:
+            self.send_tictactoe_result(game_id, result)
+            game['status'] = 'finished'
+            print(f"\n[TICTACTOE:{game_id}] Game finished: {result}")
+
+    def _check_game_result(self, game_id):
+        """Check if the game has a winner or is a draw"""
+        game = self.tictactoe_games[game_id]
+        board = game['board']
+        
+        # Check rows
+        for i in range(0, 9, 3):
+            if board[i] == board[i+1] == board[i+2] != ' ':
+                return f"{board[i]} wins (row)"
+                
+        # Check columns
+        for i in range(3):
+            if board[i] == board[i+3] == board[i+6] != ' ':
+                return f"{board[i]} wins (column)"
+                
+        # Check diagonals
+        if board[0] == board[4] == board[8] != ' ':
+            return f"{board[0]} wins (diagonal)"
+        if board[2] == board[4] == board[6] != ' ':
+            return f"{board[2]} wins (diagonal)"
+            
+        # Check for draw (all positions filled)
+        if len(game['moves']) == 9:
+            return "Draw"
+            
+        return None  # Game continues
 
     def send_tictactoe_result(self, game_id, result):
         now = int(time.time())
@@ -718,6 +951,33 @@ class LSNPClient:
         utils.log(f"Game {game_id} finished: {result}", level="INFO")
         print(f"\n[TICTACTOE:{game_id}] Game finished: {result}")
 
+    def handle_tictactoe_accept(self, parsed, sender_ip):
+        """Handle TICTACTOE_ACCEPT message"""
+        game_id = parsed.get('GAME_ID')
+        from_user = parsed.get('FROM')
+        token = parsed.get('TOKEN')
+        if game_id not in self.tictactoe_games:
+            return
+        if not self._validate_token_or_log(token, expected_scope='game', expected_user_id=from_user, sender_ip=sender_ip, message_type='TICTACTOE_ACCEPT'):
+            return
+        self.tictactoe_games[game_id]['status'] = 'active'
+        display_name = self.peer_manager.get_display_name(from_user)
+        print(f"\n[TICTACTOE:{game_id}] {display_name} accepted the game invite!")
+
+    def handle_tictactoe_reject(self, parsed, sender_ip):
+        """Handle TICTACTOE_REJECT message"""
+        game_id = parsed.get('GAME_ID')
+        from_user = parsed.get('FROM')
+        token = parsed.get('TOKEN')
+        if game_id not in self.tictactoe_games:
+            return
+        if not self._validate_token_or_log(token, expected_scope='game', expected_user_id=from_user, sender_ip=sender_ip, message_type='TICTACTOE_REJECT'):
+            return
+        display_name = self.peer_manager.get_display_name(from_user)
+        print(f"\n[TICTACTOE:{game_id}] {display_name} rejected the game invite.")
+        if game_id in self.tictactoe_games:
+            del self.tictactoe_games[game_id]
+
     def _validate_token_or_log(self, token, expected_scope, expected_user_id, sender_ip=None, message_type=None):
         valid = utils.validate_token(token, expected_scope=expected_scope, expected_user_id=expected_user_id)
         utils.log_token_check(token, expected_scope, expected_user_id, valid, sender_ip)
@@ -748,11 +1008,16 @@ class LSNPClient:
         print("  verbose                  - Toggle verbose logging")
         print("\n=== ADVANCED COMMANDS (Milestone 3) ===")
         print("  sendfile <user_id> <file> - Send file to user")
+        print("  acceptfile <file_id>      - Accept incoming file transfer")
+        print("  rejectfile <file_id>      - Reject incoming file transfer")
+        print("  listfiles                 - List pending file transfers")
         print("  group create <id> <name> <members> - Create group (members: user1,user2)")
         print("  group message <id> <text> - Send message to group")
         print("  group list               - List your groups")
         print("  group members <id>       - Show group members")
         print("  ttt invite <user_id>     - Invite to Tic Tac Toe")
+        print("  ttt accept <game_id>     - Accept game invite")
+        print("  ttt reject <game_id>     - Reject game invite")
         print("  ttt move <game_id> <pos> - Make move (0-8)")
         print("  ttt board <game_id>      - Show game board")
         print("  ttt list                 - List active games")
@@ -793,11 +1058,16 @@ class LSNPClient:
                     print("  verbose                  - Toggle verbose logging")
                     print("\n=== ADVANCED COMMANDS (Milestone 3) ===")
                     print("  sendfile <user_id> <file> - Send file to user")
+                    print("  acceptfile <file_id>      - Accept incoming file transfer")
+                    print("  rejectfile <file_id>      - Reject incoming file transfer")
+                    print("  listfiles                 - List pending file transfers")
                     print("  group create <id> <name> <members> - Create group (members: user1,user2)")
                     print("  group message <id> <text> - Send message to group")
                     print("  group list               - List your groups")
                     print("  group members <id>       - Show group members")
                     print("  ttt invite <user_id>     - Invite to Tic Tac Toe")
+                    print("  ttt accept <game_id>     - Accept game invite")
+                    print("  ttt reject <game_id>     - Reject game invite")
                     print("  ttt move <game_id> <pos> - Make move (0-8)")
                     print("  ttt board <game_id>      - Show game board")
                     print("  ttt list                 - List active games")
@@ -946,6 +1216,31 @@ class LSNPClient:
                         print("Usage: sendfile <user_id> <filename>")
                         print("Example: sendfile user@192.168.1.4 test.txt")
 
+                elif command == "acceptfile":
+                    if len(cmd) == 2:
+                        file_id = cmd[1]
+                        self.send_file_accept(file_id)
+                    else:
+                        print("Usage: acceptfile <file_id>")
+                        print("Example: acceptfile user@192.168.1.4_test.txt_1234567890")
+
+                elif command == "rejectfile":
+                    if len(cmd) == 2:
+                        file_id = cmd[1]
+                        self.send_file_reject(file_id)
+                    else:
+                        print("Usage: rejectfile <file_id>")
+                        print("Example: rejectfile user@192.168.1.4_test.txt_1234567890")
+
+                elif command == "listfiles":
+                    if self.incoming_files:
+                        print("\n=== Pending File Transfers ===")
+                        for file_id, file_info in self.incoming_files.items():
+                            status = file_info.get('status', 'pending')
+                            print(f"{file_id}: {file_info['filename']} ({file_info['filesize']} bytes) - {status}")
+                    else:
+                        print("No pending file transfers")
+
                 elif command == "group":
                     if len(cmd) < 2:
                         print("Usage: group <create|message|list|members> [args...]")
@@ -1011,9 +1306,11 @@ class LSNPClient:
 
                 elif command == "ttt":
                     if len(cmd) < 2:
-                        print("Usage: ttt <invite|move|board|list> [args...]")
+                        print("Usage: ttt <invite|accept|reject|move|board|list> [args...]")
                         print("Examples:")
                         print("  ttt invite user@192.168.1.4")
+                        print("  ttt accept game_1234567890")
+                        print("  ttt reject game_1234567890")
                         print("  ttt move game_1234567890 4")
                         print("  ttt board game_1234567890")
                         print("  ttt list")
@@ -1033,6 +1330,12 @@ class LSNPClient:
                         game_id = f"game_{int(time.time())}"
                         self.send_tictactoe_invite(target, game_id)
                         print(f"Tic Tac Toe invite sent to {target} (game_id: {game_id})")
+                    elif subcmd == "accept" and len(cmd) > 2:
+                        game_id = cmd[2]
+                        self.send_tictactoe_accept(game_id)
+                    elif subcmd == "reject" and len(cmd) > 2:
+                        game_id = cmd[2]
+                        self.send_tictactoe_reject(game_id)
                     elif subcmd == "move" and len(cmd) > 3:
                         game_id = cmd[2]
                         try:
@@ -1066,9 +1369,11 @@ class LSNPClient:
                         else:
                             print("No active games")
                     else:
-                        print("Usage: ttt <invite|move|board|list> [args...]")
+                        print("Usage: ttt <invite|accept|reject|move|board|list> [args...]")
                         print("Examples:")
                         print("  ttt invite user@192.168.1.4")
+                        print("  ttt accept game_1234567890")
+                        print("  ttt reject game_1234567890")
                         print("  ttt move game_1234567890 4")
                         print("  ttt board game_1234567890")
                         print("  ttt list")
