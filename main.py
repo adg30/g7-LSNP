@@ -70,30 +70,6 @@ class LSNPClient:
             return parser.format_message(msg)
         self.start_periodic_task(profile_message, 300)
 
-    def start_periodic_discovery(self):
-        """Send PING and PROFILE messages every 30 seconds for ongoing discovery"""
-        def discovery_message():
-            # Send PING
-            ping_msg = f"TYPE: PING\nUSER_ID: {self.user_id}\n\n"
-            self.network.send_message(ping_msg)
-            
-            # Send PROFILE
-            profile_msg = {
-                'TYPE': 'PROFILE',
-                'USER_ID': self.user_id,
-                'DISPLAY_NAME': self.display_name,
-                'STATUS': 'Available',
-            }
-            if hasattr(self, 'avatar_url') and self.avatar_url:
-                profile_msg['AVATAR_URL'] = self.avatar_url
-            if hasattr(self, 'avatar_hash') and self.avatar_hash:
-                profile_msg['AVATAR_HASH'] = self.avatar_hash
-            
-            self.network.send_message(parser.format_message(profile_msg))
-            utils.log("Sent periodic discovery messages", level="INFO")
-        
-        self.start_periodic_task(discovery_message, 30)
-
     def send_initial_discovery(self):
         """Send immediate PING and PROFILE messages to discover existing peers"""
         utils.log("Sending initial discovery messages...", level="INFO")
@@ -196,20 +172,6 @@ class LSNPClient:
                 ip_address=sender_ip
             )
             utils.log(f"Received PING from {user_id} at {sender_ip}", level="INFO")
-            
-            # Respond with our own PING to help with discovery
-            # Only respond if we haven't sent a PING to this IP recently
-            current_time = time.time()
-            if not hasattr(self, '_last_ping_response'):
-                self._last_ping_response = {}
-            
-            # Check if we've responded to this IP in the last 10 seconds
-            if sender_ip not in self._last_ping_response or \
-               current_time - self._last_ping_response[sender_ip] > 10:
-                response_ping = f"TYPE: PING\nUSER_ID: {self.user_id}\n\n"
-                self.network.send_message(response_ping, dest_ip=sender_ip)
-                self._last_ping_response[sender_ip] = current_time
-                utils.log(f"Sent PING response to {sender_ip}", level="INFO")
     
     def handle_profile_message(self, parsed, sender_ip):
         """Handle PROFILE messages, including AVATAR fields if present"""
@@ -222,31 +184,6 @@ class LSNPClient:
             avatar_hash=parsed.get('AVATAR_HASH'),
         )
         utils.log(f"Received PROFILE from {parsed['USER_ID']} at {sender_ip}", level="INFO")
-        
-        # Respond with our own PROFILE to help with discovery
-        # Only respond if we haven't sent a PROFILE to this IP recently
-        current_time = time.time()
-        if not hasattr(self, '_last_profile_response'):
-            self._last_profile_response = {}
-        
-        # Check if we've responded to this IP in the last 10 seconds
-        if sender_ip not in self._last_profile_response or \
-           current_time - self._last_profile_response[sender_ip] > 10:
-            profile_msg = {
-                'TYPE': 'PROFILE',
-                'USER_ID': self.user_id,
-                'DISPLAY_NAME': self.display_name,
-                'STATUS': 'Available',
-            }
-            if hasattr(self, 'avatar_url') and self.avatar_url:
-                profile_msg['AVATAR_URL'] = self.avatar_url
-            if hasattr(self, 'avatar_hash') and self.avatar_hash:
-                profile_msg['AVATAR_HASH'] = self.avatar_hash
-            
-            response_profile = parser.format_message(profile_msg)
-            self.network.send_message(response_profile, dest_ip=sender_ip)
-            self._last_profile_response[sender_ip] = current_time
-            utils.log(f"Sent PROFILE response to {sender_ip}", level="INFO")
 
 
 #------- FOLLOW
@@ -1305,6 +1242,5 @@ if __name__ == "__main__":
     client = LSNPClient()
     client.start_periodic_ping()
     client.start_periodic_profile()
-    client.start_periodic_discovery() # Added this line
     client.send_initial_discovery()
     client.run_cli()
