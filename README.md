@@ -47,10 +47,10 @@ Shows all discovered peers on the network.
 
 #### Basic Social Features
 ```bash
-# Follow a user first
+# Follow a user
 LSNP> follow user@192.168.1.4
 
-# Create a post (sent to followers only)
+# Create a post
 LSNP> post
 Enter post content: Hello world!
 
@@ -91,7 +91,7 @@ LSNP> followers
 ```
 
 #### `post`
-Create a new post (sent to your followers only).
+Create a new post.
 ```
 LSNP> post
 Enter post content: This is my first post!
@@ -230,10 +230,6 @@ Tokens use the format: `user_id|expiry|scope`
 #### "User not found"
 - **Cause**: Using display name that doesn't exist
 - **Solution**: Use `peers` to see actual user IDs
-
-#### "No posts received"
-- **Cause**: Users haven't followed each other
-- **Solution**: Use `follow <user_id>` to follow someone before posting
 
 ### Debug Mode
 Enable verbose logging to see detailed protocol information:
