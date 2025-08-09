@@ -43,19 +43,21 @@ class LSNPClient:
                 self.network.send_message(message_func())
                 time.sleep(interval_seconds)
 
+        # Send initial message immediately
         self.network.send_message(message_func())
-
+        
+        # Start periodic loop
         threading.Thread(target=task_loop, daemon=True).start()
 
     def start_periodic_ping(self):
-        """Send a PING message every 300 seconds."""
+        """Send a PING message every 60 seconds."""
         self.start_periodic_task(
             lambda: f"TYPE: PING\nUSER_ID: {self.user_id}\n\n",
-            300
+            60  # Changed from 300 to 60 seconds
         )
 
     def start_periodic_profile(self):
-        """Send a PROFILE message every 300 seconds, including AVATAR fields if present."""
+        """Send a PROFILE message every 60 seconds, including AVATAR fields if present."""
         def profile_message():
             msg = {
                 'TYPE': 'PROFILE',
@@ -68,7 +70,32 @@ class LSNPClient:
             if hasattr(self, 'avatar_hash') and self.avatar_hash:
                 msg['AVATAR_HASH'] = self.avatar_hash
             return parser.format_message(msg)
-        self.start_periodic_task(profile_message, 300)
+        self.start_periodic_task(profile_message, 60)  # Changed from 300 to 60 seconds
+
+    def announce_presence(self):
+        """Immediately announce presence to all peers on startup"""
+        utils.log("Announcing presence to network...", level="INFO")
+        
+        # Send immediate PING
+        ping_msg = f"TYPE: PING\nUSER_ID: {self.user_id}\n\n"
+        self.network.send_message(ping_msg)
+        
+        # Send immediate PROFILE
+        profile_msg = {
+            'TYPE': 'PROFILE',
+            'USER_ID': self.user_id,
+            'DISPLAY_NAME': self.display_name,
+            'STATUS': 'Available',
+        }
+        if hasattr(self, 'avatar_url') and self.avatar_url:
+            profile_msg['AVATAR_URL'] = self.avatar_url
+        if hasattr(self, 'avatar_hash') and self.avatar_hash:
+            profile_msg['AVATAR_HASH'] = self.avatar_hash
+        
+        formatted_profile = parser.format_message(profile_msg)
+        self.network.send_message(formatted_profile)
+        
+        utils.log("Presence announcement sent", level="INFO")
 
     def handle_message(self, message_text, sender_ip):
         """Process incoming LSNP messages"""
@@ -1445,4 +1472,5 @@ if __name__ == "__main__":
     client = LSNPClient()
     client.start_periodic_ping()
     client.start_periodic_profile()
+    client.announce_presence() # Announce presence on startup
     client.run_cli()

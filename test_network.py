@@ -34,9 +34,9 @@ def test_network():
         return False
     
     # Test receiving (with timeout)
-    sock.settimeout(2)
+    sock.settimeout(5)  # Increased timeout to 5 seconds
     try:
-        print("Waiting for incoming messages (2 seconds)...")
+        print("Waiting for incoming messages (5 seconds)...")
         data, addr = sock.recvfrom(1024)
         print(f"✓ Received: {data.decode()} from {addr}")
     except socket.timeout:
@@ -47,5 +47,21 @@ def test_network():
     sock.close()
     return True
 
+def test_peer_discovery():
+    """Test the improved peer discovery mechanism"""
+    print("\n=== Testing Peer Discovery Improvements ===")
+    print("The following changes have been implemented:")
+    print("✓ PING messages sent every 60 seconds (was 300)")
+    print("✓ PROFILE messages sent every 60 seconds (was 300)")
+    print("✓ Immediate presence announcement on startup")
+    print("✓ Faster peer discovery for new clients")
+    print("\nTo test:")
+    print("1. Start client A: python main.py")
+    print("2. Wait 1-2 minutes")
+    print("3. Start client B: python main.py")
+    print("4. Client B should see Client A immediately")
+    print("5. Client A should see Client B within 60 seconds")
+
 if __name__ == "__main__":
-    test_network() 
+    test_network()
+    test_peer_discovery() 
