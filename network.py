@@ -50,7 +50,7 @@ class Network:
     def _listen_loop(self):
         while self.running:
             try:
-                data, addr = self.sock.recvfrom(4096)
+                data, addr = self.sock.recvfrom(config.BUFFER_SIZE)
                 message = data.decode('utf-8')
                 sender_ip = addr[0]
                 utils.log(f"Received: {message}", level="RECV", sender_ip=sender_ip)
