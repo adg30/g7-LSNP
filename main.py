@@ -17,6 +17,11 @@ class LSNPClient:
         self.user_id = f"user@{self.get_lan_ip()}"
         self.display_name = input("Enter your display name: ").strip() or "LSNP User"
         
+        # Avatar attributes (initially None)
+        self.avatar_type = None
+        self.avatar_encoding = None
+        self.avatar_data = None
+        
         # Connect message handler
         self.network.register_message_handler(self.handle_message)
         
@@ -1217,50 +1222,63 @@ class LSNPClient:
     def run_cli(self):
         """Main CLI loop"""
         print(f"\n=== LSNP Client for {self.user_id} ===")
-        print("=== BASIC COMMANDS (Milestone 2) ===")
+        print("📱 PROFILE & DISCOVERY")
         print("  peers                    - Show all discovered peers")
-        print("  follow <user_id>         - Follow a user (use full user@IP format)")
+        print("  verbose                  - Toggle verbose logging")
+        print("  avatar set <image_file>  - Set profile picture")
+        print("  avatar clear             - Remove profile picture")
+        print("  avatar info              - Show avatar information")
+        
+        print("\n👥 SOCIAL NETWORKING")
+        print("  follow <user_id>         - Follow a user")
         print("  unfollow <user_id>       - Unfollow a user")
         print("  followers                - Show your followers")
         print("  post                     - Create a new post")
-        print("  viewposts                - View recent posts with timestamps")
+        print("  viewposts                - View recent posts")
         print("  message <user_id> <text> - Send private message")
         print("  like <user_id> <timestamp> - Like a post")
         print("  unlike <user_id> <timestamp> - Unlike a post")
-        print("  revoke <token>           - Revoke a token")
-        print("  verbose                  - Toggle verbose logging")
-        print("\n=== ADVANCED COMMANDS (Milestone 3) ===")
+        
+        print("\n📁 FILE SHARING")
         print("  sendfile <user_id> <file> - Send file to user")
-        print("  acceptfile <file_id>      - Accept incoming file transfer")
-        print("  rejectfile <file_id>      - Reject incoming file transfer")
-        print("  listfiles                 - List pending file transfers")
-        print("  group create <id> <name> <members> - Create group (members: user1,user2)")
+        print("  acceptfile <file_id>      - Accept incoming file")
+        print("  rejectfile <file_id>      - Reject incoming file")
+        print("  listfiles                 - List pending transfers")
+        
+        print("\n👥 GROUP MANAGEMENT")
+        print("  group create <id> <name> <members> - Create group")
         print("  group message <id> <text> - Send message to group")
         print("  group list               - List your groups")
         print("  group members <id>       - Show group members")
+        
+        print("\n🎮 GAMING")
         print("  ttt invite <user_id>     - Invite to Tic Tac Toe")
         print("  ttt accept <game_id>     - Accept game invite")
         print("  ttt reject <game_id>     - Reject game invite")
         print("  ttt move <game_id> <pos> - Make move (0-8)")
         print("  ttt board <game_id>      - Show game board")
         print("  ttt list                 - List active games")
-        print("\n  Note: Game IDs are auto-generated (e.g., game_1234567890)")
-        print("        They ensure multiple games can run simultaneously")
-        print("\n  exit                     - Exit program")
-        print("\n=== EXAMPLES ===")
+        
+        print("\n🔧 UTILITIES")
+        print("  revoke <token>           - Revoke a token")
+        print("  exit                     - Exit program")
+        
+        print("\n💡 QUICK EXAMPLES")
         print("  follow user@192.168.1.4")
-        print("  message user@192.168.1.4 Hello there!")
-        print("  like user@192.168.1.4 1234567890")
-        print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
-        print("  sendfile user@192.168.1.4 test.txt")
+        print("  message user@192.168.1.4 Hello!")
+        print("  avatar set profile.png")
+        print("  group create mygroup 'My Group' user@192.168.1.4")
         print("  ttt invite user@192.168.1.4")
-        print("\n=== TIPS ===")
-        print("  - You can use display names (like 'pc') instead of full user IDs")
-        print("  - Use 'peers' to see all available users and their IDs")
-        print("  - Use 'verbose' to see detailed protocol logs")
-        print("  - For like/unlike: use the timestamp from the post you want to like")
+        
+        print("\n📝 NOTES")
+        print("  - Use display names (like 'pc') instead of full user IDs")
+        print("  - Use 'peers' to see all available users")
+        print("  - Use 'verbose' for detailed protocol logs")
         print("  - For TTT: positions are 0-8 (top-left to bottom-right)")
         print("  - For groups: members should be comma-separated user IDs")
+        print("  - For avatars: use PNG/JPG files under 20KB")
+        
+        print("\nType 'help' anytime for this information!")
         
         while True:
             try:
@@ -1274,51 +1292,64 @@ class LSNPClient:
                 if command == "exit":
                     break
                 elif command == "help":
-                    print(f"\n=== LSNP Client for {self.user_id} ===")
-                    print("=== BASIC COMMANDS (Milestone 2) ===")
+                    print(f"\n=== LSNP Client Help ===")
+                    print(f"User: {self.user_id} | Display: {self.display_name}")
+                    
+                    print("\n📱 PROFILE & DISCOVERY")
                     print("  peers                    - Show all discovered peers")
-                    print("  follow <user_id>         - Follow a user (use full user@IP format)")
+                    print("  verbose                  - Toggle verbose logging")
+                    print("  avatar set <image_file>  - Set profile picture")
+                    print("  avatar clear             - Remove profile picture")
+                    print("  avatar info              - Show avatar information")
+                    
+                    print("\n👥 SOCIAL NETWORKING")
+                    print("  follow <user_id>         - Follow a user")
                     print("  unfollow <user_id>       - Unfollow a user")
                     print("  followers                - Show your followers")
                     print("  post                     - Create a new post")
-                    print("  viewposts                - View recent posts with timestamps")
+                    print("  viewposts                - View recent posts")
                     print("  message <user_id> <text> - Send private message")
                     print("  like <user_id> <timestamp> - Like a post")
                     print("  unlike <user_id> <timestamp> - Unlike a post")
-                    print("  revoke <token>           - Revoke a token")
-                    print("  verbose                  - Toggle verbose logging")
-                    print("\n=== ADVANCED COMMANDS (Milestone 3) ===")
+                    
+                    print("\n📁 FILE SHARING")
                     print("  sendfile <user_id> <file> - Send file to user")
-                    print("  acceptfile <file_id>      - Accept incoming file transfer")
-                    print("  rejectfile <file_id>      - Reject incoming file transfer")
-                    print("  listfiles                 - List pending file transfers")
-                    print("  group create <id> <name> <members> - Create group (members: user1,user2)")
+                    print("  acceptfile <file_id>      - Accept incoming file")
+                    print("  rejectfile <file_id>      - Reject incoming file")
+                    print("  listfiles                 - List pending transfers")
+                    
+                    print("\n👥 GROUP MANAGEMENT")
+                    print("  group create <id> <name> <members> - Create group")
                     print("  group message <id> <text> - Send message to group")
                     print("  group list               - List your groups")
                     print("  group members <id>       - Show group members")
+                    
+                    print("\n🎮 GAMING")
                     print("  ttt invite <user_id>     - Invite to Tic Tac Toe")
                     print("  ttt accept <game_id>     - Accept game invite")
                     print("  ttt reject <game_id>     - Reject game invite")
                     print("  ttt move <game_id> <pos> - Make move (0-8)")
                     print("  ttt board <game_id>      - Show game board")
                     print("  ttt list                 - List active games")
-                    print("\n  Note: Game IDs are auto-generated (e.g., game_1234567890)")
-                    print("        They ensure multiple games can run simultaneously")
-                    print("\n  exit                     - Exit program")
-                    print("\n=== EXAMPLES ===")
+                    
+                    print("\n🔧 UTILITIES")
+                    print("  revoke <token>           - Revoke a token")
+                    print("  exit                     - Exit program")
+                    
+                    print("\n💡 QUICK EXAMPLES")
                     print("  follow user@192.168.1.4")
-                    print("  message user@192.168.1.4 Hello there!")
-                    print("  like user@192.168.1.4 1234567890")
-                    print("  group create mygroup 'My Group' user@192.168.1.4,user@192.168.1.5")
-                    print("  sendfile user@192.168.1.4 test.txt")
+                    print("  message user@192.168.1.4 Hello!")
+                    print("  avatar set profile.png")
+                    print("  group create mygroup 'My Group' user@192.168.1.4")
                     print("  ttt invite user@192.168.1.4")
-                    print("\n=== TIPS ===")
-                    print("  - You can use display names (like 'pc') instead of full user IDs")
-                    print("  - Use 'peers' to see all available users and their IDs")
-                    print("  - Use 'verbose' to see detailed protocol logs")
-                    print("  - For like/unlike: use the timestamp from the post you want to like")
+                    
+                    print("\n📝 NOTES")
+                    print("  - Use display names (like 'pc') instead of full user IDs")
+                    print("  - Use 'peers' to see all available users")
+                    print("  - Use 'verbose' for detailed protocol logs")
                     print("  - For TTT: positions are 0-8 (top-left to bottom-right)")
                     print("  - For groups: members should be comma-separated user IDs")
+                    print("  - For avatars: use PNG/JPG files under 20KB")
                 elif command == "peers":
                     self.peer_manager.display_all_peers()
                 elif command == "follow":
@@ -1439,6 +1470,41 @@ class LSNPClient:
                     import config
                     config.VERBOSE_MODE = not config.VERBOSE_MODE
                     print(f"Verbose mode: {'ON' if config.VERBOSE_MODE else 'OFF'}")
+
+                elif command == "avatar":
+                    if len(cmd) < 2:
+                        print("Usage: avatar <set|clear|info> [image_file]")
+                        print("Examples:")
+                        print("  avatar set profile.png")
+                        print("  avatar clear")
+                        print("  avatar info")
+                        continue
+                    
+                    subcmd = cmd[1].lower()
+                    if subcmd == "set" and len(cmd) > 2:
+                        image_file = cmd[2]
+                        success, message = self.set_avatar_from_file(image_file)
+                        print(message)
+                        if success:
+                            print("Avatar will be included in your next profile broadcast")
+                    elif subcmd == "clear":
+                        success, message = self.clear_avatar()
+                        print(message)
+                    elif subcmd == "info":
+                        if self.avatar_type and self.avatar_data:
+                            print(f"Current Avatar:")
+                            print(f"  Type: {self.avatar_type}")
+                            print(f"  Encoding: {self.avatar_encoding}")
+                            print(f"  Data Size: {len(self.avatar_data)} characters")
+                            print(f"  Base64 Preview: {self.avatar_data[:50]}...")
+                        else:
+                            print("No avatar set")
+                    else:
+                        print("Usage: avatar <set|clear|info> [image_file]")
+                        print("Examples:")
+                        print("  avatar set profile.png")
+                        print("  avatar clear")
+                        print("  avatar info")
 
                 # --- NEW MILESTONE 3 COMMANDS ---
                 elif command == "sendfile":
@@ -1648,6 +1714,51 @@ class LSNPClient:
         # Cleanup
         self.network.stop_listening()
         print("Goodbye!")
+
+    def set_avatar_from_file(self, image_path):
+        """Set avatar from an image file, converting to base64"""
+        try:
+            import os
+            import base64
+            import mimetypes
+            
+            # Check if file exists
+            if not os.path.exists(image_path):
+                return False, f"File {image_path} not found"
+            
+            # Get file size (should be under 20KB per RFC)
+            file_size = os.path.getsize(image_path)
+            if file_size > 20 * 1024:  # 20KB limit
+                return False, f"File too large ({file_size} bytes). Must be under 20KB"
+            
+            # Determine MIME type
+            mime_type, _ = mimetypes.guess_type(image_path)
+            if not mime_type or not mime_type.startswith('image/'):
+                return False, f"File {image_path} is not a recognized image format"
+            
+            # Read and encode file
+            with open(image_path, 'rb') as f:
+                image_data = f.read()
+                base64_data = base64.b64encode(image_data).decode('utf-8')
+            
+            # Set avatar attributes
+            self.avatar_type = mime_type
+            self.avatar_encoding = 'base64'
+            self.avatar_data = base64_data
+            
+            utils.log(f"Avatar set from {image_path} ({mime_type}, {file_size} bytes)", level="INFO")
+            return True, f"Avatar set successfully from {image_path}"
+            
+        except Exception as e:
+            return False, f"Error setting avatar: {e}"
+    
+    def clear_avatar(self):
+        """Remove current avatar"""
+        self.avatar_type = None
+        self.avatar_encoding = None
+        self.avatar_data = None
+        utils.log("Avatar cleared", level="INFO")
+        return True, "Avatar cleared successfully"
 
 # Main entry point
 if __name__ == "__main__":
