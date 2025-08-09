@@ -7,7 +7,7 @@ class PeerManager:
         self.groups = {}
         self.followers = {}
 
-    def add_peer(self, user_id, display_name=None, status=None, ip_address=None, avatar_url=None, avatar_hash=None):
+    def add_peer(self, user_id, display_name=None, status=None, ip_address=None, avatar_type=None, avatar_encoding=None, avatar_data=None):
         current_time = time.time()
         
         if user_id not in self.peers:
@@ -16,8 +16,9 @@ class PeerManager:
                 'display_name': display_name or user_id, # if display_name is None
                 'status': status, 
                 'ip_address': ip_address,
-                'avatar_url': avatar_url,
-                'avatar_hash': avatar_hash,
+                'avatar_type': avatar_type,
+                'avatar_encoding': avatar_encoding,
+                'avatar_data': avatar_data,
                 'last_seen': current_time
             }
             utils.log(f"Added new peer: {user_id}", level="INFO")
@@ -30,10 +31,12 @@ class PeerManager:
                 peer['status'] = status
             if ip_address:
                 peer['ip_address'] = ip_address
-            if avatar_url:
-                peer['avatar_url'] = avatar_url
-            if avatar_hash:
-                peer['avatar_hash'] = avatar_hash
+            if avatar_type:
+                peer['avatar_type'] = avatar_type
+            if avatar_encoding:
+                peer['avatar_encoding'] = avatar_encoding
+            if avatar_data:
+                peer['avatar_data'] = avatar_data
             peer['last_seen'] = current_time
             utils.log(f"Updated peer: {user_id}", level="INFO")
 
@@ -48,10 +51,12 @@ class PeerManager:
             print(f"-->Display Name: {peer['display_name']}")
             print(f"-->Status: {peer['status']}")
             print(f"-->IP Address: {peer['ip_address']}")
-            if peer.get('avatar_url'):
-                print(f"-->Avatar URL: {peer['avatar_url']}")
-            if peer.get('avatar_hash'):
-                print(f"-->Avatar Hash: {peer['avatar_hash']}")
+            if peer.get('avatar_type'):
+                print(f"-->Avatar Type: {peer['avatar_type']}")
+            if peer.get('avatar_encoding'):
+                print(f"-->Avatar Encoding: {peer['avatar_encoding']}")
+            if peer.get('avatar_data'):
+                print(f"-->Avatar Data: {peer['avatar_data'][:50]}...")  # Show first 50 chars
             if peer['last_seen']:
                 time_diff = time.time() - peer['last_seen']
                 print(f"-->Last Seen: {int(time_diff)} seconds ago")

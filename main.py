@@ -24,6 +24,7 @@ class LSNPClient:
         self.network.start_listening()
         utils.log(f"LSNP Client started for {self.user_id}", level="INFO")
         self.incoming_files = {}  # file_id -> {'filename': ..., 'chunks': {}, 'total': N, 'hash': ..., 'from': ...}
+        self.outgoing_files = {}  # file_id -> {'filename': ..., 'filesize': ..., 'filehash': ...}
         self.groups = {}  # group_id -> {'name': ..., 'members': set(), 'meta': {...}}
         self.tictactoe_games = {}  # game_id -> {'players': [X, O], 'board': [...], 'turn': X, 'moves': [], 'status': ...}
         self.posts = {}  # timestamp -> {'content': ..., 'author': ..., 'timestamp': ...}
@@ -66,10 +67,12 @@ class LSNPClient:
                 'DISPLAY_NAME': self.display_name,
                 'STATUS': 'Available',
             }
-            if hasattr(self, 'avatar_url') and self.avatar_url:
-                msg['AVATAR_URL'] = self.avatar_url
-            if hasattr(self, 'avatar_hash') and self.avatar_hash:
-                msg['AVATAR_HASH'] = self.avatar_hash
+            if hasattr(self, 'avatar_type') and self.avatar_type:
+                msg['AVATAR_TYPE'] = self.avatar_type
+            if hasattr(self, 'avatar_encoding') and self.avatar_encoding:
+                msg['AVATAR_ENCODING'] = self.avatar_encoding
+            if hasattr(self, 'avatar_data') and self.avatar_data:
+                msg['AVATAR_DATA'] = self.avatar_data
             return parser.format_message(msg)
         self.start_periodic_task(profile_message, 60)  # Changed from 300 to 60 seconds
 
@@ -88,10 +91,12 @@ class LSNPClient:
             'DISPLAY_NAME': self.display_name,
             'STATUS': 'Available',
         }
-        if hasattr(self, 'avatar_url') and self.avatar_url:
-            profile_msg['AVATAR_URL'] = self.avatar_url
-        if hasattr(self, 'avatar_hash') and self.avatar_hash:
-            profile_msg['AVATAR_HASH'] = self.avatar_hash
+        if hasattr(self, 'avatar_type') and self.avatar_type:
+            profile_msg['AVATAR_TYPE'] = self.avatar_type
+        if hasattr(self, 'avatar_encoding') and self.avatar_encoding:
+            profile_msg['AVATAR_ENCODING'] = self.avatar_encoding
+        if hasattr(self, 'avatar_data') and self.avatar_data:
+            profile_msg['AVATAR_DATA'] = self.avatar_data
         
         formatted_profile = parser.format_message(profile_msg)
         self.network.send_message(formatted_profile)
@@ -166,8 +171,9 @@ class LSNPClient:
             display_name=parsed.get('DISPLAY_NAME'),
             status=parsed.get('STATUS'),
             ip_address=sender_ip,
-            avatar_url=parsed.get('AVATAR_URL'),
-            avatar_hash=parsed.get('AVATAR_HASH'),
+            avatar_type=parsed.get('AVATAR_TYPE'),
+            avatar_encoding=parsed.get('AVATAR_ENCODING'),
+            avatar_data=parsed.get('AVATAR_DATA'),
         )
 
 
@@ -281,7 +287,7 @@ class LSNPClient:
 
     def handle_post(self, parsed, sender_ip):
         """Handle POST messages"""
-        from_user = parsed.get('FROM')
+        from_user = parsed.get('USER_ID')  # POST messages use USER_ID, not FROM
         content = parsed.get('CONTENT')
         timestamp = parsed.get('TIMESTAMP')
         token = parsed.get('TOKEN')
@@ -443,6 +449,16 @@ class LSNPClient:
         ttl_seconds = 3600
         token = f"{self.user_id}|{now + ttl_seconds}|file"
         message_id = secrets.token_hex(8)
+        
+        # Store file information for later chunk sending
+        file_id = f"{self.user_id}_{filename}_{int(time.time())}"
+        self.outgoing_files[file_id] = {
+            'filename': filename,
+            'filesize': int(filesize),
+            'filehash': filehash,
+            'target_user': target_user_id
+        }
+        
         msg = parser.format_message({
             'TYPE': 'FILE_OFFER',
             'FROM': self.user_id,
@@ -459,6 +475,7 @@ class LSNPClient:
             dest_ip = peer_info['ip_address']
             self.network.send_message(msg, dest_ip=dest_ip)
             utils.log(f"Sent FILE_OFFER for {filename} to {target_user_id} via {dest_ip}", level="INFO")
+            print(f"File offer sent with ID: {file_id}")
         else:
             utils.log(f"Cannot send FILE_OFFER — no known IP for {target_user_id}", level="WARN")
 
@@ -700,9 +717,42 @@ class LSNPClient:
         utils.log(f"File request received for {file_id} from {from_user}", level="INFO")
         print(f"\n[FILE] {self.peer_manager.get_display_name(from_user)} requested file {file_id}")
         
-        # For now, just acknowledge the request
-        # In a full implementation, this would start sending file chunks
-        print("File transfer request acknowledged (chunk sending not yet implemented)")
+        # Find the file to send
+        file_to_send = None
+        for fid, file_info in self.outgoing_files.items():
+            if fid == file_id or file_id in fid:  # Allow partial matching
+                file_to_send = file_info
+                break
+        
+        if not file_to_send:
+            print(f"File {file_id} not found in outgoing files")
+            return
+            
+        # Start sending file chunks
+        print(f"Starting file transfer: {file_to_send['filename']} ({file_to_send['filesize']} bytes)")
+        
+        try:
+            with open(file_to_send['filename'], 'rb') as f:
+                chunk_size = 1024  # 1KB chunks
+                chunk_index = 0
+                
+                while True:
+                    chunk_data = f.read(chunk_size)
+                    if not chunk_data:
+                        break
+                        
+                    # Send chunk
+                    self.send_file_chunk(from_user, file_id, chunk_index, chunk_data)
+                    chunk_index += 1
+                    
+                    # Small delay to prevent overwhelming the network
+                    time.sleep(0.01)
+                
+                print(f"File transfer completed: {chunk_index} chunks sent")
+                
+        except Exception as e:
+            print(f"Error sending file: {e}")
+            utils.log(f"Error sending file {file_id}: {e}", level="ERROR")
 
     # --- GROUP MANAGEMENT (Milestone 3) ---
     def send_group_create(self, group_id, group_name, members):
@@ -798,7 +848,10 @@ class LSNPClient:
         
         for member in members:
             if member == self.user_id:
+                # For self, just display the message locally
+                print(f"\n[GROUP:{group_id}] You: {content}")
                 continue
+                
             peer_info = self.peer_manager.peers.get(member)
             if peer_info and peer_info.get('ip_address'):
                 dest_ip = peer_info['ip_address']
