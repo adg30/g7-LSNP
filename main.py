@@ -26,6 +26,7 @@ class LSNPClient:
         self.incoming_files = {}  # file_id -> {'filename': ..., 'chunks': {}, 'total': N, 'hash': ..., 'from': ...}
         self.groups = {}  # group_id -> {'name': ..., 'members': set(), 'meta': {...}}
         self.tictactoe_games = {}  # game_id -> {'players': [X, O], 'board': [...], 'turn': X, 'moves': [], 'status': ...}
+        self.posts = {}  # timestamp -> {'content': ..., 'author': ..., 'timestamp': ...}
 
     def get_lan_ip(self):
         try:
@@ -138,6 +139,8 @@ class LSNPClient:
             self.handle_file_received(parsed, sender_ip)
         elif msg_type == 'FILE_REJECT':
             self.handle_file_reject(parsed, sender_ip)
+        elif msg_type == 'FILE_REQUEST':
+            self.handle_file_request(parsed, sender_ip)
         elif msg_type == 'GROUP_CREATE':
             self.handle_group_create(parsed, sender_ip)
         elif msg_type == 'GROUP_UPDATE':
@@ -277,13 +280,27 @@ class LSNPClient:
         
 
     def handle_post(self, parsed, sender_ip):
-        from_user = parsed.get('USER_ID')
+        """Handle POST messages"""
+        from_user = parsed.get('FROM')
         content = parsed.get('CONTENT')
+        timestamp = parsed.get('TIMESTAMP')
         token = parsed.get('TOKEN')
+        
         if not self._validate_token_or_log(token, expected_scope='broadcast', expected_user_id=from_user, sender_ip=sender_ip, message_type='POST'):
             return
+            
         display_name = self.peer_manager.get_display_name(from_user)
-        print(f"\n POST from {display_name}: {content}")
+        utils.log_protocol_event("POST_RECEIVED", f"from={display_name} content={content[:50]}...", sender_ip, "POST")
+        
+        # Store post locally for like/unlike functionality
+        if timestamp:
+            self.posts[timestamp] = {
+                'content': content,
+                'author': from_user,
+                'timestamp': timestamp
+            }
+        
+        print(f"\n[POST] {display_name}: {content}")
 
 
 #------- DM
@@ -486,7 +503,29 @@ class LSNPClient:
         # Send ACK to start file transfer
         self.send_ack(f"file_accept_{file_id}", self.peer_manager.peers.get(from_user, {}).get('ip_address'))
         file_info['status'] = 'accepted'
+        
+        # Request file chunks from sender
         print(f"File transfer accepted: {file_id}")
+        print("Requesting file chunks...")
+        
+        # Send file request message
+        now = int(time.time())
+        ttl_seconds = 3600
+        token = f"{self.user_id}|{now + ttl_seconds}|file"
+        msg = parser.format_message({
+            'TYPE': 'FILE_REQUEST',
+            'FROM': self.user_id,
+            'TO': from_user,
+            'FILE_ID': file_id,
+            'TIMESTAMP': now,
+            'TOKEN': token,
+        })
+        
+        peer_info = self.peer_manager.peers.get(from_user)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent FILE_REQUEST for {file_id} to {from_user}", level="INFO")
 
     def send_file_reject(self, file_id):
         """Send rejection of file transfer"""
@@ -635,17 +674,35 @@ class LSNPClient:
 
     def handle_file_reject(self, parsed, sender_ip):
         """Handle FILE_REJECT message"""
-        file_id = parsed.get('FILEID')
         from_user = parsed.get('FROM')
+        file_id = parsed.get('FILE_ID')
+        token = parsed.get('TOKEN')
         
-        if file_id:
-            utils.log(f"File {file_id} was rejected by {from_user}", level="INFO")
-            # Remove from outgoing files if tracking
-            if hasattr(self, 'outgoing_files') and file_id in self.outgoing_files:
-                del self.outgoing_files[file_id]
-            print(f"\n[FILE_TRANSFER] File {file_id} was rejected by {from_user}")
-        else:
-            utils.log("FILE_REJECT missing FILEID", level="WARN")
+        if not self._validate_token_or_log(token, expected_scope='file', expected_user_id=from_user, sender_ip=sender_ip, message_type='FILE_REJECT'):
+            return
+            
+        utils.log(f"File {file_id} rejected by {from_user}", level="INFO")
+        print(f"\n[FILE] File {file_id} was rejected by {self.peer_manager.get_display_name(from_user)}")
+        
+        # Remove from outgoing files if tracking
+        if hasattr(self, 'outgoing_files') and file_id in self.outgoing_files:
+            del self.outgoing_files[file_id]
+
+    def handle_file_request(self, parsed, sender_ip):
+        """Handle FILE_REQUEST message - start sending file chunks"""
+        from_user = parsed.get('FROM')
+        file_id = parsed.get('FILE_ID')
+        token = parsed.get('TOKEN')
+        
+        if not self._validate_token_or_log(token, expected_scope='file', expected_user_id=from_user, sender_ip=sender_ip, message_type='FILE_REQUEST'):
+            return
+            
+        utils.log(f"File request received for {file_id} from {from_user}", level="INFO")
+        print(f"\n[FILE] {self.peer_manager.get_display_name(from_user)} requested file {file_id}")
+        
+        # For now, just acknowledge the request
+        # In a full implementation, this would start sending file chunks
+        print("File transfer request acknowledged (chunk sending not yet implemented)")
 
     # --- GROUP MANAGEMENT (Milestone 3) ---
     def send_group_create(self, group_id, group_name, members):
@@ -724,10 +781,21 @@ class LSNPClient:
             'TIMESTAMP': now,
             'TOKEN': token,
         })
+        
         group_info = self.groups.get(group_id, {})
         members = group_info.get('members', set())
+        
+        # Ensure members is a set
         if isinstance(members, str):
             members = set(members.split(','))
+        elif isinstance(members, list):
+            members = set(members)
+        elif not isinstance(members, set):
+            print(f"Error: Invalid members format for group {group_id}")
+            return
+            
+        print(f"Sending group message to {len(members)} members: {members}")
+        
         for member in members:
             if member == self.user_id:
                 continue
@@ -736,6 +804,10 @@ class LSNPClient:
                 dest_ip = peer_info['ip_address']
                 self.network.send_message(msg, dest_ip=dest_ip)
                 utils.log(f"Sent GROUP_MESSAGE for {group_id} to {member} via {dest_ip}", level="INFO")
+            else:
+                print(f"Warning: Cannot send to {member} - no IP address found")
+        
+        print(f"Group message sent to {len([m for m in members if m != self.user_id])} recipients")
 
     def handle_group_message(self, parsed, sender_ip):
         group_id = parsed.get('GROUP_ID')
@@ -787,8 +859,12 @@ class LSNPClient:
         }
         display_name = self.peer_manager.get_display_name(from_user)
         utils.log_protocol_event("GAME_INVITE_RECEIVED", f"game={game_id} from={display_name}", sender_ip, "TICTACTOE_INVITE")
-        print(f"\n[TICTACTOE] Game invite from {display_name} (game_id: {game_id})")
-        print("Commands: ttt accept <game_id> or ttt reject <game_id>")
+        print(f"\n🎮 [TICTACTOE] Game invite from {display_name} (game_id: {game_id})")
+        print("Commands:")
+        print(f"  ttt accept {game_id} - Accept and start the game")
+        print(f"  ttt reject {game_id} - Decline the invite")
+        print("\n💡 After accepting, use 'ttt move <game_id> <position>' to play!")
+        print("   Positions: 0-8 (top-left to bottom-right)")
 
     def send_tictactoe_accept(self, game_id):
         """Accept a Tic Tac Toe game invite"""
@@ -901,38 +977,37 @@ class LSNPClient:
         # Check if position is valid and empty
         try:
             position = int(position)
-            if position < 0 or position > 8:
+            if not (0 <= position <= 8):
                 utils.log(f"Invalid position {position} from {from_user}", level="WARN")
                 return
-        except ValueError:
+            if game['board'][position] != ' ':
+                utils.log(f"Position {position} already occupied by {from_user}", level="WARN")
+                return
+        except (ValueError, TypeError):
             utils.log(f"Invalid position format {position} from {from_user}", level="WARN")
             return
             
-        if game['board'][position] != ' ':
-            utils.log(f"Position {position} already occupied by {from_user}", level="WARN")
-            return
-            
         # Make the move
-        symbol = 'X' if from_user == game['players'][0] else 'O'
-        game['board'][position] = symbol
-        game['moves'].append({'player': from_user, 'position': position, 'symbol': symbol})
+        game['board'][position] = 'X' if from_user == game['players'][0] else 'O'
+        game['moves'].append((from_user, position))
         
         # Switch turns
         game['turn'] = game['players'][1] if game['turn'] == game['players'][0] else game['players'][0]
         
-        display_name = self.peer_manager.get_display_name(from_user)
-        print(f"\n[TICTACTOE:{game_id}] {display_name} placed {symbol} at position {position}")
-        
-        # Display the updated board (RFC requirement: "Print the board")
-        self._display_game_board(game_id)
-        
         # Check for game result
         result = self._check_game_result(game_id)
+        
+        # Display updated board
+        self._display_game_board(game_id)
+        
         if result:
-            self.send_tictactoe_result(game_id, result)
-            game['status'] = 'finished'
-            utils.log(f"Game {game_id} finished: {result}", level="INFO")
-            print(f"\n[TICTACTOE:{game_id}] Game finished: {result}")
+            # Game ended
+            print(f"\n🎮 Game Over! {result}")
+        else:
+            # Game continues
+            next_player = self.peer_manager.get_display_name(game['turn'])
+            print(f"\n➡️ Next turn: {next_player}")
+            print(f"💡 Use: ttt move {game_id} <position> to make your move")
 
     def _check_game_result(self, game_id):
         """Check if the game has a winner or is a draw"""
@@ -1027,19 +1102,50 @@ class LSNPClient:
             del self.tictactoe_games[game_id]
 
     def _display_game_board(self, game_id):
-        """Display the current game board"""
+        """Display the Tic Tac Toe board with enhanced information"""
         if game_id not in self.tictactoe_games:
+            print(f"Game {game_id} not found")
             return
+            
         game = self.tictactoe_games[game_id]
         board = game['board']
-        print(f"\n=== Tic Tac Toe Board ({game_id}) ===")
+        
+        print(f"\n🎮 Tic Tac Toe Board ({game_id})")
+        print(f"Status: {game['status'].upper()}")
+        
+        # Show current turn
+        current_player = self.peer_manager.get_display_name(game['turn'])
+        print(f"Current Turn: {current_player}")
+        
+        # Display the board
+        print("\nPositions:")
+        for i in range(0, 9, 3):
+            print(f" {i} | {i+1} | {i+2} ")
+            if i < 6:
+                print("---+---+---")
+        
+        print("\nCurrent Board:")
         for i in range(0, 9, 3):
             print(f" {board[i]} | {board[i+1]} | {board[i+2]} ")
             if i < 6:
                 print("---+---+---")
-        print(f"Turn: {self.peer_manager.get_display_name(game['turn'])}")
-        print(f"Status: {game['status']}")
-        print("Positions: 0|1|2, 3|4|5, 6|7|8")
+        
+        # Show move history
+        if game['moves']:
+            print(f"\n📝 Move History ({len(game['moves'])} moves):")
+            for i, (player, pos) in enumerate(game['moves'], 1):
+                player_name = self.peer_manager.get_display_name(player)
+                symbol = 'X' if player == game['players'][0] else 'O'
+                print(f"  {i}. {player_name} ({symbol}) → position {pos}")
+        
+        # Show available positions
+        available = [i for i, cell in enumerate(board) if cell == ' ']
+        if available:
+            print(f"\n📍 Available positions: {', '.join(map(str, available))}")
+        
+        print(f"\n💡 Commands:")
+        print(f"  ttt move {game_id} <position> - Make a move")
+        print(f"  ttt board {game_id} - Show this board again")
 
     def _validate_token_or_log(self, token, expected_scope, expected_user_id, sender_ip=None, message_type=None):
         valid = utils.validate_token(token, expected_scope=expected_scope, expected_user_id=expected_user_id)
@@ -1064,6 +1170,7 @@ class LSNPClient:
         print("  unfollow <user_id>       - Unfollow a user")
         print("  followers                - Show your followers")
         print("  post                     - Create a new post")
+        print("  viewposts                - View recent posts with timestamps")
         print("  message <user_id> <text> - Send private message")
         print("  like <user_id> <timestamp> - Like a post")
         print("  unlike <user_id> <timestamp> - Unlike a post")
@@ -1084,6 +1191,8 @@ class LSNPClient:
         print("  ttt move <game_id> <pos> - Make move (0-8)")
         print("  ttt board <game_id>      - Show game board")
         print("  ttt list                 - List active games")
+        print("\n  Note: Game IDs are auto-generated (e.g., game_1234567890)")
+        print("        They ensure multiple games can run simultaneously")
         print("\n  exit                     - Exit program")
         print("\n=== EXAMPLES ===")
         print("  follow user@192.168.1.4")
@@ -1119,6 +1228,7 @@ class LSNPClient:
                     print("  unfollow <user_id>       - Unfollow a user")
                     print("  followers                - Show your followers")
                     print("  post                     - Create a new post")
+                    print("  viewposts                - View recent posts with timestamps")
                     print("  message <user_id> <text> - Send private message")
                     print("  like <user_id> <timestamp> - Like a post")
                     print("  unlike <user_id> <timestamp> - Unlike a post")
@@ -1139,6 +1249,8 @@ class LSNPClient:
                     print("  ttt move <game_id> <pos> - Make move (0-8)")
                     print("  ttt board <game_id>      - Show game board")
                     print("  ttt list                 - List active games")
+                    print("\n  Note: Game IDs are auto-generated (e.g., game_1234567890)")
+                    print("        They ensure multiple games can run simultaneously")
                     print("\n  exit                     - Exit program")
                     print("\n=== EXAMPLES ===")
                     print("  follow user@192.168.1.4")
@@ -1197,6 +1309,17 @@ class LSNPClient:
                         self.send_post(content)
                     else:
                         print("Post content cannot be empty.")
+
+                elif command == "viewposts":
+                    if self.posts:
+                        print("\n=== Recent Posts ===")
+                        for timestamp, post in sorted(self.posts.items(), key=lambda x: int(x[0]), reverse=True):
+                            author_name = self.peer_manager.get_display_name(post['author'])
+                            print(f"[{timestamp}] {author_name}: {post['content']}")
+                        print("\nTo like/unlike: like <user_id> <timestamp>")
+                        print("Example: like user@192.168.1.4 1234567890")
+                    else:
+                        print("No posts available. Create some posts first!")
 
                 elif command == "message":
                     if len(cmd) > 2:
@@ -1402,6 +1525,12 @@ class LSNPClient:
                             else:
                                 print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
                                 continue
+                        
+                        # Prevent self-invites
+                        if target == self.user_id:
+                            print("You cannot invite yourself to a game!")
+                            continue
+                            
                         game_id = f"game_{int(time.time())}"
                         self.send_tictactoe_invite(target, game_id)
                         print(f"Tic Tac Toe invite sent to {target} (game_id: {game_id})")
