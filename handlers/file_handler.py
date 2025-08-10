@@ -319,27 +319,23 @@ class FileHandler:
             self._check_file_completion_safe(file_id)
 
     def _check_file_completion_safe(self, file_id):
-        """Thread-safe file completion check"""
-        if file_id not in self.incoming_files:
+        file_info = self.incoming_files.get(file_id)
+        if not file_info:
+            print(f"[ERROR] No incoming file info for ID: {file_id}")
             return
-            
-        file_info = self.incoming_files[file_id]
-        chunks = file_info['chunks']
-        total_chunks = file_info['total_chunks']
-        
-        if len(chunks) >= total_chunks:
-            # Check if we have all chunks
-            missing_chunks = []
-            for i in range(total_chunks):
-                if i not in chunks:
-                    missing_chunks.append(i)
-            
-            if missing_chunks:
-                # Request missing chunks
-                self._request_missing_chunks(file_id, missing_chunks)
-            else:
-                # All chunks received, reassemble file
-                self._reassemble_file(file_id)
+
+        received_chunks = len(file_info['chunks'])
+        expected_chunks = file_info['total_chunks']
+
+        print(f"[DEBUG] Checking file completion for {file_id}: "
+            f"{received_chunks}/{expected_chunks} chunks received.")
+
+        if received_chunks == expected_chunks:
+            print(f"[INFO] All chunks for {file_id} received. Starting reassembly...")
+            self._reassemble_file(file_id)
+        else:
+            print(f"[WARN] File {file_id} not complete yet.")
+
 
     def _request_missing_chunks(self, file_id, missing_chunks):
         """Request specific missing chunks"""
@@ -382,80 +378,69 @@ class FileHandler:
             dest_ip = peer_info['ip_address']
             self.client.network.send_message(msg, dest_ip=dest_ip)
 
-    def _reassemble_file(self, file_id):
-        """Reassemble file from chunks with hash verification"""
-        if file_id not in self.incoming_files:
-            return
-            
-        file_info = self.incoming_files[file_id]
-        chunks = file_info['chunks']
-        total_chunks = file_info['total_chunks']
-        
-        try:
-            # Get safe filename
-            safe_filepath = self._get_safe_filename(file_info['filename'])
-            
-            # Write file efficiently
-            with open(safe_filepath, 'wb') as f:
-                for i in range(total_chunks):
-                    if i not in chunks:
-                        raise Exception(f"Missing chunk {i}")
-                    f.write(chunks[i])
-            
-            # Verify hash
-            if file_info['filehash'] and not self._verify_file_hash(safe_filepath, file_info['filehash']):
-                os.remove(safe_filepath)
-                print(f"❌ File transfer failed: Hash verification failed")
-                utils.log(f"Hash verification failed for {file_id}", level="ERROR")
-                file_info['status'] = 'failed'
-                return
-            
-            # Success!
-            file_info['status'] = 'completed'
-            file_info['saved_path'] = safe_filepath
-            
-            # Send completion acknowledgment
-            self.send_file_received(file_info['from'], file_id)
-            
-            # Clean up memory
-            del file_info['chunks']  # Free memory
-            if file_id in self.chunk_requests:
-                del self.chunk_requests[file_id]
-            
-            print(f"✅ File received successfully: {safe_filepath}")
-            utils.log(f"File {file_id} saved as {safe_filepath}", level="INFO")
-            
-        except Exception as e:
-            print(f"❌ File transfer failed: {e}")
-            utils.log(f"Error reassembling file {file_id}: {e}", level="ERROR")
-            file_info['status'] = 'failed'
-            
-            # Clean up partial file
-            try:
-                if 'safe_filepath' in locals() and os.path.exists(safe_filepath):
-                    os.remove(safe_filepath)
-            except:
-                pass
 
-    def send_file_received(self, target_user_id, file_id):
-        """Send file received confirmation"""
-        now = int(time.time())
-        ttl_seconds = 3600
-        token = f"{self.client.user_id}|{now + ttl_seconds}|file"
-        msg = parser.format_message({
-            'TYPE': 'FILE_RECEIVED',
-            'FROM': self.client.user_id,
-            'TO': target_user_id,
-            'FILE_ID': file_id,
-            'TIMESTAMP': now,
-            'TOKEN': token,
-        })
-        
-        peer_info = self.client.peer_manager.peers.get(target_user_id)
-        if peer_info and peer_info.get('ip_address'):
-            dest_ip = peer_info['ip_address']
-            self.client.network.send_message(msg, dest_ip=dest_ip)
-            utils.log(f"Sent FILE_RECEIVED for {file_id} to {target_user_id}", level="INFO")
+    def _reassemble_file(self, file_id):
+        file_info = self.incoming_files[file_id]
+        original_filename = file_info['filename']
+
+        print(f"[INFO] Reassembling file: {original_filename} (ID: {file_id})")
+
+        safe_path = self._get_safe_filename(original_filename)
+        print(f"[DEBUG] Safe path resolved to: {safe_path}")
+
+        try:
+            os.makedirs(self.downloads_dir, exist_ok=True)
+            with open(safe_path, 'wb') as f:
+                for i in range(file_info['total_chunks']):
+                    if i not in file_info['chunks']:
+                        print(f"[ERROR] Missing chunk {i}. Aborting save.")
+                        return
+                    f.write(file_info['chunks'][i])
+
+            print(f"[INFO] File written successfully to {safe_path}")
+
+            # Verify hash
+            with open(safe_path, 'rb') as f:
+                file_data = f.read()
+                file_hash = hashlib.sha256(file_data).hexdigest()
+
+            print(f"[DEBUG] Calculated hash: {file_hash}")
+            print(f"[DEBUG] Expected hash:   {file_info['hash']}")
+
+            if file_hash != file_info['hash']:
+                print(f"[ERROR] Hash mismatch for file {original_filename}. Deleting corrupt file.")
+                os.remove(safe_path)
+                file_info['status'] = "failed"
+                file_info['saved_path'] = None
+            else:
+                file_info['status'] = "completed"
+                file_info['saved_path'] = safe_path
+                print(f"[SUCCESS] File {original_filename} saved and verified.")
+
+        except Exception as e:
+            print(f"[EXCEPTION] Failed to save file {original_filename}: {e}")
+            file_info['status'] = "failed"
+
+
+        def send_file_received(self, target_user_id, file_id):
+            """Send file received confirmation"""
+            now = int(time.time())
+            ttl_seconds = 3600
+            token = f"{self.client.user_id}|{now + ttl_seconds}|file"
+            msg = parser.format_message({
+                'TYPE': 'FILE_RECEIVED',
+                'FROM': self.client.user_id,
+                'TO': target_user_id,
+                'FILE_ID': file_id,
+                'TIMESTAMP': now,
+                'TOKEN': token,
+            })
+            
+            peer_info = self.client.peer_manager.peers.get(target_user_id)
+            if peer_info and peer_info.get('ip_address'):
+                dest_ip = peer_info['ip_address']
+                self.client.network.send_message(msg, dest_ip=dest_ip)
+                utils.log(f"Sent FILE_RECEIVED for {file_id} to {target_user_id}", level="INFO")
 
     def handle_file_received(self, parsed, sender_ip):
         """Handle file received confirmation"""
