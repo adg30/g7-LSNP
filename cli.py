@@ -344,16 +344,20 @@ class CLI:
                             continue
                             
                         game_id = f"game_{int(time.time())}"
+                        utils.log(f"CLI: Generated game_id {game_id} for invite", level="DEBUG")
                         self.client.game_handler.send_tictactoe_invite(target, game_id)
                         print(f"Tic Tac Toe invite sent to {target} (game_id: {game_id})")
                     elif subcmd == "accept" and len(cmd) > 2:
                         game_id = cmd[2]
+                        utils.log(f"CLI: User accepted game_id {game_id}", level="DEBUG")
                         self.client.game_handler.send_tictactoe_accept(game_id)
                     elif subcmd == "reject" and len(cmd) > 2:
                         game_id = cmd[2]
+                        utils.log(f"CLI: User rejected game_id {game_id}", level="DEBUG")
                         self.client.game_handler.send_tictactoe_reject(game_id)
                     elif subcmd == "move" and len(cmd) > 3:
                         game_id = cmd[2]
+                        utils.log(f"CLI: User moved in game_id {game_id}", level="DEBUG")
                         try:
                             position = int(cmd[3])
                             if 0 <= position <= 8:
