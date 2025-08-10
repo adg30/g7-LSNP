@@ -8,6 +8,8 @@ import threading
 from threading import Lock, Event
 from collections import defaultdict
 
+import mimetypes
+
 class FileHandler:
     def __init__(self, client):
         self.client = client
@@ -97,14 +99,19 @@ class FileHandler:
             'created': now
         }
         
+        file_type, _ = mimetypes.guess_type(filename)
+        if not file_type:
+            file_type = "application/octet-stream"
+
         msg = parser.format_message({
             'TYPE': 'FILE_OFFER',
             'FROM': self.client.user_id,
             'TO': target_user_id,
-            'FILE_ID': file_id,  # Include file_id in offer
+            'FILEID': file_id,
             'FILENAME': os.path.basename(filename),
             'FILESIZE': filesize,
-            'FILEHASH': filehash,
+            'FILETYPE': file_type,
+            'DESCRIPTION': f"File transfer for {os.path.basename(filename)}",
             'MESSAGE_ID': message_id,
             'TIMESTAMP': now,
             'TOKEN': token,
@@ -126,10 +133,11 @@ class FileHandler:
         """Handle incoming file offer"""
         from_user = parsed.get('FROM')
         to_user = parsed.get('TO')
-        file_id = parsed.get('FILE_ID')  # Now included in offer
+        file_id = parsed.get('FILEID')
         filename = parsed.get('FILENAME')
         filesize = parsed.get('FILESIZE')
-        filehash = parsed.get('FILEHASH')
+        filetype = parsed.get('FILETYPE')
+        description = parsed.get('DESCRIPTION')
         token = parsed.get('TOKEN')
         
         if to_user != self.client.user_id:
@@ -239,7 +247,7 @@ class FileHandler:
             'TYPE': 'FILE_CHUNK',
             'FROM': self.client.user_id,
             'TO': target_user_id,
-            'FILE_ID': file_id,  # Use consistent field name
+            'FILEID': file_id,
             'CHUNK_INDEX': chunk_index,
             'TOTAL_CHUNKS': total_chunks,
             'CHUNK_SIZE': len(chunk_data),

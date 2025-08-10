@@ -282,11 +282,14 @@ class GameHandler:
         now = int(time.time())
         ttl_seconds = 3600
         token = f"{self.client.user_id}|{now + ttl_seconds}|game"
+        message_id = secrets.token_hex(8)
         msg = parser.format_message({
             'TYPE': 'TICTACTOE_RESULT',
-            'GAME_ID': game_id,
+            'GAMEID': game_id,
             'FROM': self.client.user_id,
             'RESULT': result,
+            'SYMBOL': self._get_player_symbol(game_id),
+            'MESSAGE_ID': message_id,
             'TIMESTAMP': now,
             'TOKEN': token,
         })

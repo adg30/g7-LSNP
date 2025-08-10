@@ -76,7 +76,7 @@ class SocialHandler:
         
         msg = parser.format_message({
             'TYPE': 'POST',
-            'FROM': self.client.user_id,
+            'USER_ID': self.client.user_id,
             'CONTENT': content,
             'TTL': ttl,
             'TIMESTAMP': now,
@@ -107,7 +107,7 @@ class SocialHandler:
 
     def handle_post(self, parsed, sender_ip):
         """Handle POST messages"""
-        from_user = parsed.get('FROM') or parsed.get('USER_ID')  # Support both RFC and legacy format
+        from_user = parsed.get('USER_ID') or parsed.get('FROM')  # Support both RFC and legacy format
         content = parsed.get('CONTENT')
         timestamp = parsed.get('TIMESTAMP')
         token = parsed.get('TOKEN')
