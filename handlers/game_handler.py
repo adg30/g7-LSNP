@@ -29,6 +29,15 @@ class GameHandler:
             self.client.network.send_message(msg, dest_ip=dest_ip)
             utils.log(f"Sent TICTACTOE_INVITE for {game_id} to {target_user_id} via {dest_ip}", level="INFO")
 
+            # Create a local game state for the inviting user
+            self.tictactoe_games[game_id] = {
+                'players': [self.client.user_id, target_user_id],
+                'board': [' '] * 9,
+                'turn': self.client.user_id,  # The inviting player goes first
+                'moves': [],
+                'status': 'pending'  # Waiting for the other player to accept
+            }
+
     def handle_tictactoe_invite(self, parsed, sender_ip):
         game_id = parsed.get('GAMEID') or parsed.get('GAME_ID')  # Support both RFC and legacy format
         from_user = parsed.get('FROM')
