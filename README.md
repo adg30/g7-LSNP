@@ -63,7 +63,21 @@ LSNP> like user@192.168.1.4 1234567890
 
 ## Detailed Command Reference
 
-### Basic Commands (Milestone 2)
+### General Commands
+
+#### `help`
+Show the help message with all available commands.
+```
+LSNP> help
+```
+
+#### `exit`
+Exit the LSNP client.
+```
+LSNP> exit
+```
+
+### Profile & Discovery
 
 #### `peers`
 Show all discovered peers on the network.
@@ -71,11 +85,37 @@ Show all discovered peers on the network.
 LSNP> peers
 ```
 
+#### `verbose`
+Toggle verbose logging mode.
+```
+LSNP> verbose
+```
+
+#### `avatar set <image_file>`
+Set your profile picture from an image file.
+```
+LSNP> avatar set my_avatar.png
+```
+
+#### `avatar clear`
+Remove your profile picture.
+```
+LSNP> avatar clear
+```
+
+#### `avatar info`
+Show information about your current avatar.
+```
+LSNP> avatar info
+```
+
+### Social Networking
+
 #### `follow <user_id>`
 Follow a user. You can use display names or full user IDs.
 ```
 LSNP> follow user@192.168.1.4
-LSNP> follow pc  # if 'pc' is the display name
+LSNP> follow Alice
 ```
 
 #### `unfollow <user_id>`
@@ -95,6 +135,12 @@ Create a new post.
 ```
 LSNP> post
 Enter post content: This is my first post!
+```
+
+#### `viewposts`
+View the most recent posts from users you follow.
+```
+LSNP> viewposts
 ```
 
 #### `message <user_id> <text>`
@@ -121,74 +167,128 @@ Revoke a token.
 LSNP> revoke user@192.168.1.4|1234567890|follow
 ```
 
-#### `verbose`
-Toggle verbose logging mode.
-```
-LSNP> verbose
-```
+### File Sharing
 
-### Advanced Commands (Milestone 3)
-
-#### File Transfer
-```bash
-# Send a file to a user
-LSNP> sendfile user@192.168.1.4 test.txt
+#### `sendfile <user> <file>`
+Offer to send a file to a user.
+```
+LSNP> sendfile user@192.168.1.4 document.pdf
 ```
 
-#### Group Management
-```bash
-# Create a group
-LSNP> group create mygroup "My Group" user@192.168.1.4,user@192.168.1.5
+#### `acceptfile <file_id>`
+Accept an incoming file transfer.
+```
+LSNP> acceptfile some_file_id
+```
 
-# Send message to group
-LSNP> group message mygroup Hello group!
+#### `rejectfile <file_id>`
+Reject an incoming file transfer.
+```
+LSNP> rejectfile some_file_id
+```
 
-# List your groups
+#### `listfiles`
+Show all active and recent file transfers.
+```
+LSNP> listfiles
+```
+
+#### `fileinfo <file_id>`
+Show detailed information about a file transfer.
+```
+LSNP> fileinfo some_file_id
+```
+
+#### `downloads`
+List all files that have been successfully downloaded.
+```
+LSNP> downloads
+```
+
+#### `cleanup [hours]`
+Clean up old file transfers. Defaults to 24 hours.
+```
+LSNP> cleanup
+LSNP> cleanup 48
+```
+
+### Group Management
+
+#### `group create <name> <members>`
+Create a new group with a list of comma-separated members.
+```
+LSNP> group create MyFriends user@192.168.1.4,user@192.168.1.5
+```
+
+#### `group message <id> <text>`
+Send a message to a group.
+```
+LSNP> group message my_group_id Hello everyone!
+```
+
+#### `group list`
+List all the groups you are a member of.
+```
 LSNP> group list
-
-# Show group members
-LSNP> group members mygroup
 ```
 
-#### Tic Tac Toe Game
-```bash
-# Invite someone to play
+#### `group update <id> [--add user1,user2] [--remove user3]`
+Add or remove members from a group.
+```
+LSNP> group update my_group_id --add user@192.168.1.6 --remove user@192.168.1.4
+```
+
+### Tic Tac Toe
+
+#### `ttt invite <user_id>`
+Invite a user to play Tic Tac Toe.
+```
 LSNP> ttt invite user@192.168.1.4
+```
 
-# Make a move (positions 0-8)
-LSNP> ttt move game_1234567890 4
+#### `ttt accept <game_id>`
+Accept a Tic Tac Toe game invitation.
+```
+LSNP> ttt accept some_game_id
+```
 
-# Show game board
-LSNP> ttt board game_1234567890
+#### `ttt reject <game_id>`
+Reject a Tic Tac Toe game invitation.
+```
+LSNP> ttt reject some_game_id
+```
 
-# List active games
+#### `ttt move <game_id> <pos>`
+Make a move in a Tic Tac Toe game (positions 0-8).
+```
+LSNP> ttt move some_game_id 4
+```
+
+#### `ttt board <game_id>`
+Show the game board.
+```
+LSNP> ttt board some_game_id
+```
+
+#### `ttt list`
+List all your active Tic Tac Toe games.
+```
 LSNP> ttt list
 ```
 
-## Testing Guide
+### Testing
 
-### Single Machine Testing
-1. Open multiple terminal windows
-2. Run `python main.py` in each terminal
-3. Use different display names for each instance
-4. Test communication between instances
+#### `test packetloss <rate>`
+Enable packet loss simulation with a given rate (0.0 to 1.0).
+```
+LSNP> test packetloss 0.1
+```
 
-### Multi-Machine Testing
-1. Ensure all machines are on the same network
-2. Run `python main.py` on each machine
-3. Use `peers` command to verify discovery
-4. Test all features between machines
-
-### Testing Checklist
-- [ ] Peer discovery works (`peers` command)
-- [ ] Follow/unfollow functionality
-- [ ] Post creation and viewing
-- [ ] Private messaging
-- [ ] File transfer
-- [ ] Group creation and messaging
-- [ ] Tic Tac Toe game
-- [ ] Token validation and revocation
-- [ ] Verbose logging
+#### `test disable`
+Disable the packet loss simulation.
+```
+LSNP> test disable
+```
 
 ## Protocol Details
 
@@ -259,3 +359,41 @@ Edit `config.py` to modify:
 - **BUFFER_SIZE**: Network buffer size
 - **VERBOSE_MODE**: Default logging level
 
+
+
+## Work Distribution
+
+| Task / Role                     | Member 1 (Go)                               | Member 2 (Aaron)                            | Member 3 (Gab)                              | Member 4 (Rein)                             |
+| ------------------------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------------- |
+| **Network Communication**       |                                             |                                             |                                             |                                             |
+| UDP Socket Setup                | Primary                                     | Reviewer                                    | Secondary                                   |                                             |
+| mDNS Discovery Integration      | Secondary                                   | Primary                                     | Reviewer                                    |                                             |
+| IP Address Logging              | Reviewer                                    | Secondary                                   | Primary                                     |                                             |
+| **Core Feature Implementation** |                                             |                                             |                                             |                                             |
+| Core Messaging                  | Primary                                     | Reviewer                                    |                                             | Secondary                                   |
+| File Transfer                   | Secondary                                   | Primary                                     |                                             | Reviewer                                    |
+| Tic Tac Toe Game                | Reviewer                                    | Secondary                                   | Primary                                     |                                             |
+| Group Creation / Messaging      |                                             | Reviewer                                    | Secondary                                   | Primary                                     |
+| Induced Packet Loss             | Primary                                     |                                             | Reviewer                                    | Secondary                                   |
+| Acknowledgement / Retry         | Secondary                                   | Reviewer                                    |                                             | Primary                                     |
+| **UI & Logging**                |                                             |                                             |                                             |                                             |
+| Verbose Mode Support            | Reviewer                                    |                                             | Primary                                     | Secondary                                   |
+| Terminal Grid Display           | Primary                                     | Secondary                                   |                                             | Reviewer                                    |
+| Message Parsing & Debug Output  | Secondary                                   | Primary                                     | Reviewer                                    |                                             |
+| **Testing and Validation**      |                                             |                                             |                                             |                                             |
+| Inter-group Testing             | Reviewer                                    | Primary                                     | Secondary                                   |                                             |
+| Correct Parsing Validation      | Primary                                     | Reviewer                                    |                                             | Secondary                                   |
+| Token Expiry & IP Match         | Secondary                                   |                                             | Reviewer                                    | Primary                                     |
+| **Documentation & Coordination**|                                             |                                             |                                             |                                             |
+| RFC & Project Report            | Primary                                     | Reviewer                                    | Secondary                                   |                                             |
+| Milestone Tracking              | Secondary                                   |                                             | Reviewer                                    | Primary                                     |
+
+## AI Disclaimer
+
+This project was developed with the assistance of AI tools, including ChatGPT and GitHub Copilot. These tools were used for:
+- **Code Generation**: Generating boilerplate code, utility functions, and initial class structures.
+- **Debugging**: Identifying and fixing bugs in the network and parsing logic.
+- **Protocol Design**: Refining the LSNP message formats and token validation rules.
+- **Documentation**: Writing and formatting the README and other documentation.
+
+All AI-generated code was reviewed, tested, and adapted to fit the project's requirements. The final implementation represents our own work and understanding of the protocol.
