@@ -32,26 +32,32 @@ class CLI:
                 elif command == "verbose":
                     utils.VERBOSE = not utils.VERBOSE
                     print(f"Verbose mode: {'ON' if utils.VERBOSE else 'OFF'}")
-                elif command == "follow" and len(cmd) > 1:
-                    target = cmd[1]
-                    if not target.startswith("user@"):
-                        user_id = self.client.get_user_id_by_display_name(target)
-                        if user_id:
-                            target = user_id
-                        else:
-                            print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
-                            continue
-                    self.client.social_handler.send_follow_action(target, "FOLLOW")
-                elif command == "unfollow" and len(cmd) > 1:
-                    target = cmd[1]
-                    if not target.startswith("user@"):
-                        user_id = self.client.get_user_id_by_display_name(target)
-                        if user_id:
-                            target = user_id
-                        else:
-                            print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
-                            continue
-                    self.client.social_handler.send_follow_action(target, "UNFOLLOW")
+                elif command == "follow":
+                    if len(cmd) > 1:
+                        target = cmd[1]
+                        if not target.startswith("user@"):
+                            user_id = self.client.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
+                        self.client.social_handler.send_follow_action(target, "FOLLOW")
+                    else:
+                        print("Usage: follow <user_id>")
+                elif command == "unfollow":
+                    if len(cmd) > 1:
+                        target = cmd[1]
+                        if not target.startswith("user@"):
+                            user_id = self.client.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
+                        self.client.social_handler.send_follow_action(target, "UNFOLLOW")
+                    else:
+                        print("Usage: unfollow <user_id>")
                 elif command == "followers":
                     self.client.peer_manager.display_followers(self.client.user_id)
                 elif command == "post":
@@ -68,48 +74,60 @@ class CLI:
                             print(f"[{time.ctime(timestamp)}] {author_name}: {post['content']}")
                     else:
                         print("No posts available")
-                elif command == "message" and len(cmd) > 2:
-                    target = cmd[1]
-                    if not target.startswith("user@"):
-                        user_id = self.client.get_user_id_by_display_name(target)
-                        if user_id:
-                            target = user_id
-                        else:
-                            print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
-                            continue
-                    content = " ".join(cmd[2:])
-                    self.client.social_handler.send_dm(target, content)
-                elif command == "like" and len(cmd) > 2:
-                    target = cmd[1]
-                    if not target.startswith("user@"):
-                        user_id = self.client.get_user_id_by_display_name(target)
-                        if user_id:
-                            target = user_id
-                        else:
-                            print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
-                            continue
-                    try:
-                        post_timestamp = int(cmd[2])
-                        self.client.social_handler.send_like(target, post_timestamp, "LIKE")
-                    except ValueError:
-                        print("Post timestamp must be a number")
-                elif command == "unlike" and len(cmd) > 2:
-                    target = cmd[1]
-                    if not target.startswith("user@"):
-                        user_id = self.client.get_user_id_by_display_name(target)
-                        if user_id:
-                            target = user_id
-                        else:
-                            print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
-                            continue
-                    try:
-                        post_timestamp = int(cmd[2])
-                        self.client.social_handler.send_like(target, post_timestamp, "UNLIKE")
-                    except ValueError:
-                        print("Post timestamp must be a number")
-                elif command == "revoke" and len(cmd) > 1:
-                    token = cmd[1]
-                    self.client.social_handler.send_revoke(token)
+                elif command == "message":
+                    if len(cmd) > 2:
+                        target = cmd[1]
+                        if not target.startswith("user@"):
+                            user_id = self.client.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
+                        content = " ".join(cmd[2:])
+                        self.client.social_handler.send_dm(target, content)
+                    else:
+                        print("Usage: message <user_id> <text>")
+                elif command == "like":
+                    if len(cmd) > 2:
+                        target = cmd[1]
+                        if not target.startswith("user@"):
+                            user_id = self.client.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
+                        try:
+                            post_timestamp = int(cmd[2])
+                            self.client.social_handler.send_like(target, post_timestamp, "LIKE")
+                        except ValueError:
+                            print("Post timestamp must be a number")
+                    else:
+                        print("Usage: like <user_id> <timestamp>")
+                elif command == "unlike":
+                    if len(cmd) > 2:
+                        target = cmd[1]
+                        if not target.startswith("user@"):
+                            user_id = self.client.get_user_id_by_display_name(target)
+                            if user_id:
+                                target = user_id
+                            else:
+                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                continue
+                        try:
+                            post_timestamp = int(cmd[2])
+                            self.client.social_handler.send_like(target, post_timestamp, "UNLIKE")
+                        except ValueError:
+                            print("Post timestamp must be a number")
+                    else:
+                        print("Usage: unlike <user_id> <timestamp>")
+                elif command == "revoke":
+                    if len(cmd) > 1:
+                        token = cmd[1]
+                        self.client.social_handler.send_revoke(token)
+                    else:
+                        print("Usage: revoke <token>")
                 elif command == "avatar":
                     if len(cmd) < 2:
                         print("Usage: avatar <set|clear|info> [image_file]")
@@ -167,8 +185,6 @@ class CLI:
                             print(f"❌ Failed to send file offer")
                     else:
                         print("Usage: sendfile <user_id> <filename>")
-                        print("Example: sendfile user@192.168.1.4 test.txt")
-                        print("         sendfile Alice document.pdf")
 
                 elif command == "acceptfile":
                     if len(cmd) == 2:
@@ -176,7 +192,6 @@ class CLI:
                         self.client.file_handler.send_file_accept(file_id)
                     else:
                         print("Usage: acceptfile <file_id>")
-                        print("Example: acceptfile alice_document_1691234567_abc123")
 
                 elif command == "rejectfile":
                     if len(cmd) == 2:
@@ -184,7 +199,6 @@ class CLI:
                         self.client.file_handler.send_file_reject(file_id)
                     else:
                         print("Usage: rejectfile <file_id>")
-                        print("Example: rejectfile alice_document_1691234567_abc123")
 
                 elif command == "listfiles":
                     # Use the improved list_transfers method
@@ -227,7 +241,6 @@ class CLI:
                             print(f"❌ File ID '{file_id}' not found")
                     else:
                         print("Usage: fileinfo <file_id>")
-                        print("Example: fileinfo alice_document_1691234567_abc123")
 
                 elif command == "downloads":
                     # List files in the downloads directory
@@ -266,28 +279,30 @@ class CLI:
 
                 elif command == "group":
                     if len(cmd) < 2:
-                        print("Usage: group <create|message|list> [args...]")
-                        print("Examples:")
-                        print("  group create mygroup user1,user2,user3")
-                        print("  group message mygroup Hello everyone!")
-                        print("  group list")
+                        print("Usage: group <create|message|list|update> [args...]")
                         continue
-                    
+
                     subcmd = cmd[1].lower()
-                    if subcmd == "create" and len(cmd) > 2:
-                        group_name = cmd[2]
-                        members = cmd[3].split(',') if len(cmd) > 3 else []
-                        members.append(self.client.user_id)  # Include self
-                        group_id = f"group_{int(time.time())}"
-                        self.client.group_handler.send_group_create(group_id, group_name, members)
-                        print(f"Group '{group_name}' created with ID: {group_id}")
-                    elif subcmd == "message" and len(cmd) > 2:
-                        group_id = cmd[2]
-                        content = " ".join(cmd[3:]) if len(cmd) > 3 else ""
-                        if content:
+
+                    if subcmd == "create":
+                        if len(cmd) > 3:
+                            group_name = cmd[2]
+                            members = cmd[3].split(',')
+                            members.append(self.client.user_id)  # Include self
+                            group_id = f"group_{int(time.time())}"
+                            self.client.group_handler.send_group_create(group_id, group_name, members)
+                            print(f"Group '{group_name}' created with ID: {group_id}")
+                        else:
+                            print("Usage: group create <name> <members>")
+
+                    elif subcmd == "message":
+                        if len(cmd) > 3:
+                            group_id = cmd[2]
+                            content = " ".join(cmd[3:])
                             self.client.group_handler.send_group_message(group_id, content)
                         else:
-                            print("Message content cannot be empty")
+                            print("Usage: group message <group_id> <text>")
+
                     elif subcmd == "list":
                         if self.client.group_handler.groups:
                             print("\n=== Your Groups ===")
@@ -295,85 +310,104 @@ class CLI:
                                 print(f"{group_id}: {group_info['name']} ({len(group_info['members'])} members)")
                         else:
                             print("No groups")
-                    elif subcmd == "update" and len(cmd) > 2:
-                        group_id = cmd[2]
-                        add_members = []
-                        remove_members = []
-                        i = 3
-                        while i < len(cmd):
-                            if cmd[i] == '--add' and i + 1 < len(cmd):
-                                add_members = cmd[i+1].split(',')
-                                i += 2
-                            elif cmd[i] == '--remove' and i + 1 < len(cmd):
-                                remove_members = cmd[i+1].split(',')
-                                i += 2
-                            else:
-                                print(f"Invalid argument: {cmd[i]}")
-                                break
-                        self.client.group_handler.send_group_update(group_id, add_members, remove_members)
+
+                    elif subcmd == "update":
+                        if len(cmd) > 3:
+                            group_id = cmd[2]
+                            add_members = []
+                            remove_members = []
+                            i = 3
+                            while i < len(cmd):
+                                if cmd[i] == '--add' and i + 1 < len(cmd):
+                                    add_members = cmd[i + 1].split(',')
+                                    i += 2
+                                elif cmd[i] == '--remove' and i + 1 < len(cmd):
+                                    remove_members = cmd[i + 1].split(',')
+                                    i += 2
+                                else:
+                                    print(f"Invalid argument: {cmd[i]}")
+                                    break
+                            self.client.group_handler.send_group_update(group_id, add_members, remove_members)
+                        else:
+                            print("Usage: group update <group_id> [--add user1,user2] [--remove user3]")
+
                     else:
                         print("Usage: group <create|message|list|update> [args...]")
 
                 elif command == "ttt":
                     if len(cmd) < 2:
                         print("Usage: ttt <invite|accept|reject|move|board|list> [args...]")
-                        print("Examples:")
-                        print("  ttt invite user@192.168.1.4")
-                        print("  ttt accept game_1234567890")
-                        print("  ttt reject game_1234567890")
-                        print("  ttt move game_1234567890 4")
-                        print("  ttt board game_1234567890")
-                        print("  ttt list")
                         continue
-                    
+
                     subcmd = cmd[1].lower()
-                    if subcmd == "invite" and len(cmd) > 2:
-                        target = cmd[2]
-                        # Try to find user ID by display name if not full user ID
-                        if not target.startswith("user@"):
-                            user_id = self.client.get_user_id_by_display_name(target)
-                            if user_id:
-                                target = user_id
-                            else:
-                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+
+                    if subcmd == "invite":
+                        if len(cmd) > 2:
+                            target = cmd[2]
+                            # Try to find user ID by display name if not full user ID
+                            if not target.startswith("user@"):
+                                user_id = self.client.get_user_id_by_display_name(target)
+                                if user_id:
+                                    target = user_id
+                                else:
+                                    print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                    continue
+
+                            # Prevent self-invites
+                            if target == self.client.user_id:
+                                print("You cannot invite yourself to a game!")
                                 continue
-                        
-                        # Prevent self-invites
-                        if target == self.client.user_id:
-                            print("You cannot invite yourself to a game!")
-                            continue
-                            
-                        game_id = f"game_{int(time.time())}"
-                        utils.log(f"CLI: Generated game_id {game_id} for invite", level="DEBUG")
-                        self.client.game_handler.send_tictactoe_invite(target, game_id)
-                        print(f"Tic Tac Toe invite sent to {target} (game_id: {game_id})")
-                    elif subcmd == "accept" and len(cmd) > 2:
-                        game_id = cmd[2]
-                        utils.log(f"CLI: User accepted game_id {game_id}", level="DEBUG")
-                        self.client.game_handler.send_tictactoe_accept(game_id)
-                    elif subcmd == "reject" and len(cmd) > 2:
-                        game_id = cmd[2]
-                        utils.log(f"CLI: User rejected game_id {game_id}", level="DEBUG")
-                        self.client.game_handler.send_tictactoe_reject(game_id)
-                    elif subcmd == "move" and len(cmd) > 3:
-                        game_id = cmd[2]
-                        utils.log(f"CLI: User moved in game_id {game_id}", level="DEBUG")
-                        try:
-                            position = int(cmd[3])
-                            if 0 <= position <= 8:
-                                success = self.client.game_handler.send_tictactoe_move(game_id, position)
-                                if not success:
-                                    print("Move failed. Check the game status.")
-                            else:
-                                print("Position must be 0-8")
-                        except ValueError:
-                            print("Position must be a number 0-8")
-                    elif subcmd == "board" and len(cmd) > 2:
-                        game_id = cmd[2]
-                        if game_id in self.client.game_handler.tictactoe_games:
-                            self.client.game_handler._display_game_board(game_id)
+
+                            game_id = f"game_{int(time.time())}"
+                            utils.log(f"CLI: Generated game_id {game_id} for invite", level="DEBUG")
+                            self.client.game_handler.send_tictactoe_invite(target, game_id)
+                            print(f"Tic Tac Toe invite sent to {target} (game_id: {game_id})")
                         else:
-                            print(f"Game {game_id} not found")
+                            print("Usage: ttt invite <user_id>")
+
+                    elif subcmd == "accept":
+                        if len(cmd) > 2:
+                            game_id = cmd[2]
+                            utils.log(f"CLI: User accepted game_id {game_id}", level="DEBUG")
+                            self.client.game_handler.send_tictactoe_accept(game_id)
+                        else:
+                            print("Usage: ttt accept <game_id>")
+
+                    elif subcmd == "reject":
+                        if len(cmd) > 2:
+                            game_id = cmd[2]
+                            utils.log(f"CLI: User rejected game_id {game_id}", level="DEBUG")
+                            self.client.game_handler.send_tictactoe_reject(game_id)
+                        else:
+                            print("Usage: ttt reject <game_id>")
+
+                    elif subcmd == "move":
+                        if len(cmd) > 3:
+                            game_id = cmd[2]
+                            utils.log(f"CLI: User moved in game_id {game_id}", level="DEBUG")
+                            try:
+                                position = int(cmd[3])
+                                if 0 <= position <= 8:
+                                    success = self.client.game_handler.send_tictactoe_move(game_id, position)
+                                    if not success:
+                                        print("Move failed. Check the game status.")
+                                else:
+                                    print("Position must be 0-8")
+                            except ValueError:
+                                print("Position must be a number 0-8")
+                        else:
+                            print("Usage: ttt move <game_id> <position>")
+
+                    elif subcmd == "board":
+                        if len(cmd) > 2:
+                            game_id = cmd[2]
+                            if game_id in self.client.game_handler.tictactoe_games:
+                                self.client.game_handler._display_game_board(game_id)
+                            else:
+                                print(f"Game {game_id} not found")
+                        else:
+                            print("Usage: ttt board <game_id>")
+
                     elif subcmd == "list":
                         if self.client.game_handler.tictactoe_games:
                             print("\n=== Your Tic Tac Toe Games ===")
@@ -381,8 +415,10 @@ class CLI:
                                 print(f"{game_id}: {game_info['status']} (turn: {game_info['turn']})")
                         else:
                             print("No active games")
+
                     else:
                         print("Usage: ttt <invite|accept|reject|move|board|list> [args...]")
+
 
                 elif command == "test":
                     if len(cmd) < 2:
