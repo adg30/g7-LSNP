@@ -145,7 +145,7 @@ class CLI:
                         print("  avatar clear")
                         print("  avatar info")
 
-                # --- NEW MILESTONE 3 COMMANDS ---
+                # --- ENHANCED MILESTONE 3 COMMANDS ---
                 elif command == "sendfile":
                     if len(cmd) > 2:
                         target = cmd[1]
@@ -155,21 +155,20 @@ class CLI:
                             if user_id:
                                 target = user_id
                             else:
-                                print(f"User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
+                                print(f"❌ User '{target}' not found. Use full user ID (e.g., user@192.168.1.4)")
                                 continue
                         filename = cmd[2]
-                        try:
-                            filesize = os.path.getsize(filename)
-                            filehash = str(hash(filename))  # Simple hash for demo
-                            self.client.file_handler.send_file_offer(target, filename, filesize, filehash)
-                            print(f"File offer sent for {filename}")
-                        except FileNotFoundError:
-                            print(f"File {filename} not found")
-                        except Exception as e:
-                            print(f"Error: {e}")
+                        
+                        # Use the improved file handler
+                        file_id = self.client.file_handler.send_file_offer(target, filename)
+                        if file_id:
+                            print(f"✅ File offer sent: {os.path.basename(filename)} (ID: {file_id})")
+                        else:
+                            print(f"❌ Failed to send file offer")
                     else:
                         print("Usage: sendfile <user_id> <filename>")
                         print("Example: sendfile user@192.168.1.4 test.txt")
+                        print("         sendfile Alice document.pdf")
 
                 elif command == "acceptfile":
                     if len(cmd) == 2:
@@ -177,7 +176,7 @@ class CLI:
                         self.client.file_handler.send_file_accept(file_id)
                     else:
                         print("Usage: acceptfile <file_id>")
-                        print("Example: acceptfile user@192.168.1.4_test.txt_1234567890")
+                        print("Example: acceptfile alice_document_1691234567_abc123")
 
                 elif command == "rejectfile":
                     if len(cmd) == 2:
@@ -185,16 +184,85 @@ class CLI:
                         self.client.file_handler.send_file_reject(file_id)
                     else:
                         print("Usage: rejectfile <file_id>")
-                        print("Example: rejectfile user@192.168.1.4_test.txt_1234567890")
+                        print("Example: rejectfile alice_document_1691234567_abc123")
 
                 elif command == "listfiles":
-                    if self.client.file_handler.incoming_files:
-                        print("\n=== Pending File Transfers ===")
-                        for file_id, file_info in self.client.file_handler.incoming_files.items():
-                            status = file_info.get('status', 'pending')
-                            print(f"{file_id}: {file_info['filename']} ({file_info['filesize']} bytes) - {status}")
+                    # Use the improved list_transfers method
+                    self.client.file_handler.list_transfers()
+
+                elif command == "fileinfo":
+                    if len(cmd) == 2:
+                        file_id = cmd[1]
+                        # Check both incoming and outgoing files
+                        file_info = None
+                        direction = None
+                        
+                        if file_id in self.client.file_handler.incoming_files:
+                            file_info = self.client.file_handler.incoming_files[file_id]
+                            direction = "📥 Incoming"
+                        elif file_id in self.client.file_handler.outgoing_files:
+                            file_info = self.client.file_handler.outgoing_files[file_id]
+                            direction = "📤 Outgoing"
+                        
+                        if file_info:
+                            print(f"\n📁 File Information - {direction}")
+                            print(f"File ID: {file_id}")
+                            print(f"Filename: {file_info.get('filename', file_info.get('display_name', 'Unknown'))}")
+                            print(f"Size: {file_info['filesize']} bytes ({file_info['filesize']//1024} KB)")
+                            print(f"Status: {file_info.get('status', 'Unknown')}")
+                            
+                            if 'filehash' in file_info:
+                                print(f"Hash: {file_info['filehash']}")
+                            
+                            if direction == "📥 Incoming":
+                                print(f"From: {self.client.peer_manager.get_display_name(file_info['from'])}")
+                                if 'chunks' in file_info:
+                                    total = file_info.get('total_chunks', 1)
+                                    received = len(file_info['chunks'])
+                                    progress = (received / total * 100) if total > 0 else 0
+                                    print(f"Progress: {received}/{total} chunks ({progress:.1f}%)")
+                            else:
+                                print(f"To: {self.client.peer_manager.get_display_name(file_info['target_user'])}")
+                        else:
+                            print(f"❌ File ID '{file_id}' not found")
                     else:
-                        print("No pending file transfers")
+                        print("Usage: fileinfo <file_id>")
+                        print("Example: fileinfo alice_document_1691234567_abc123")
+
+                elif command == "downloads":
+                    # List files in the downloads directory
+                    downloads_dir = getattr(self.client.file_handler, 'downloads_dir', 'downloads')
+                    try:
+                        if os.path.exists(downloads_dir):
+                            files = [f for f in os.listdir(downloads_dir) if os.path.isfile(os.path.join(downloads_dir, f))]
+                            if files:
+                                print(f"\n📂 Downloaded Files ({downloads_dir}):")
+                                for i, filename in enumerate(files, 1):
+                                    filepath = os.path.join(downloads_dir, filename)
+                                    size = os.path.getsize(filepath)
+                                    modified = time.ctime(os.path.getmtime(filepath))
+                                    print(f"  {i}. {filename} ({size} bytes) - {modified}")
+                            else:
+                                print(f"📂 Downloads directory is empty ({downloads_dir})")
+                        else:
+                            print(f"📂 Downloads directory doesn't exist yet ({downloads_dir})")
+                    except Exception as e:
+                        print(f"❌ Error listing downloads: {e}")
+
+                elif command == "cleanup":
+                    # Clean up old transfers
+                    if len(cmd) >= 2:
+                        try:
+                            hours = int(cmd[1])
+                            self.client.file_handler.cleanup_old_transfers(max_age_hours=hours)
+                            print(f"✅ Cleaned up transfers older than {hours} hours")
+                        except ValueError:
+                            print("❌ Invalid hours value")
+                    else:
+                        # Default cleanup (24 hours)
+                        self.client.file_handler.cleanup_old_transfers()
+                        print("✅ Cleaned up transfers older than 24 hours")
+                    print("💡 Use 'cleanup <hours>' to specify age limit")
 
                 elif command == "group":
                     if len(cmd) < 2:
@@ -358,10 +426,14 @@ class CLI:
         print("  unlike <user_id> <timestamp> - Unlike a post")
         
         print("\n📁 FILE SHARING")
-        print("  sendfile <user_id> <file> - Send file to user")
-        print("  acceptfile <file_id>      - Accept incoming file")
-        print("  rejectfile <file_id>      - Reject incoming file")
-        print("  listfiles                 - Show pending file transfers")
+        print("  sendfile <user> <file> - Offer file to user")
+        print("  acceptfile <file_id>   - Accept file transfer")
+        print("  rejectfile <file_id>   - Reject file transfer")
+        print("  listfiles             - Show all file transfers")
+        print("  fileinfo <file_id>    - Show detailed file info")
+        print("  downloads             - List downloaded files")
+        print("  cleanup [hours]       - Clean up old transfers")
+        print("")
         
         print("\n👥 GROUP MANAGEMENT")
         print("  group create <name> <members> - Create a group")
