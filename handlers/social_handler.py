@@ -213,11 +213,18 @@ class SocialHandler:
             print(f"Cannot send {action} — {target_user_id} not found")
 
     def handle_like(self, parsed, sender_ip):
-        """Handle LIKE/UNLIKE messages"""
+        """Handle LIKE messages (supports both RFC format and legacy format)"""
         from_user = parsed.get('FROM')
         to_user = parsed.get('TO')
         post_timestamp = parsed.get('POST_TIMESTAMP')
         token = parsed.get('TOKEN')
+        
+        # Determine action from either ACTION field (RFC) or TYPE field (legacy)
+        action = parsed.get('ACTION')  # RFC format: ACTION field
+        if not action:
+            # Legacy format: derive from TYPE field
+            msg_type = parsed.get('TYPE')
+            action = "UNLIKE" if msg_type == "UNLIKE" else "LIKE"
         
         if to_user != self.client.user_id:
             return
@@ -226,8 +233,15 @@ class SocialHandler:
             return
             
         display_name = self.client.peer_manager.get_display_name(from_user)
-        utils.log_protocol_event("LIKE_RECEIVED", f"from={display_name} post={post_timestamp}", sender_ip, "LIKE")
-        print(f"\n[LIKE] {display_name} liked your post from {post_timestamp}")
+        
+        if action == "LIKE":
+            utils.log_protocol_event("LIKE_RECEIVED", f"from={display_name} post={post_timestamp}", sender_ip, "LIKE")
+            print(f"\n[LIKE] {display_name} liked your post from {post_timestamp}")
+        elif action == "UNLIKE":
+            utils.log_protocol_event("UNLIKE_RECEIVED", f"from={display_name} post={post_timestamp}", sender_ip, "LIKE")
+            print(f"\n[UNLIKE] {display_name} unliked your post from {post_timestamp}")
+        else:
+            utils.log(f"Unknown ACTION in LIKE message: {action}", level="WARN")
 
     def send_revoke(self, token: str):
         """Send a REVOKE message to invalidate a token"""

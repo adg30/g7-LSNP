@@ -142,6 +142,8 @@ class LSNPClient:
             self.social_handler.handle_ack(parsed, sender_ip)
         elif msg_type == "LIKE":
             self.social_handler.handle_like(parsed, sender_ip)
+        elif msg_type == "UNLIKE":
+            self.social_handler.handle_like(parsed, sender_ip)
         elif msg_type == "REVOKE":
             self.social_handler.handle_revoke(parsed, sender_ip)
         elif msg_type == 'FILE_OFFER':
