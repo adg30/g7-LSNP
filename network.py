@@ -67,7 +67,19 @@ class Network:
             self.listen_thread.join(timeout=1)
         utils.log("Stopped listening for incoming messages.", level="INFO")
 
-    def send_message(self, message, dest_ip='<broadcast>'):
+    def send_message(self, message, dest_ip='<broadcast>', retry_count=0, max_retries=3):
+        # Check for simulated packet loss
+        if utils.should_drop_packet():
+            utils.log(f"Simulated packet loss for message to {dest_ip}", level="WARN")
+            if retry_count < max_retries:
+                utils.log_retry_attempt("PACKET_LOSS", dest_ip, retry_count + 1)
+                import time
+                time.sleep(0.1)  # Small delay before retry
+                return self.send_message(message, dest_ip, retry_count + 1, max_retries)
+            else:
+                utils.log(f"Max retries reached for message to {dest_ip}", level="ERROR")
+                return False
+        
         encoded_message = message.encode('utf-8')
         try:
             if dest_ip == '<broadcast>':
@@ -76,8 +88,10 @@ class Network:
             else:
                 self.sock.sendto(encoded_message, (dest_ip, self.port))
                 utils.log(f"Sent unicast to {dest_ip}: {message}", level="SEND", message_type="UNICAST")
+            return True
         except Exception as e:
             utils.log(f"Error sending message: {e}", level="ERROR")
+            return False
 
     def register_message_handler(self, handler):
         self.message_handlers.append(handler)

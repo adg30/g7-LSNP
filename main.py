@@ -270,16 +270,17 @@ class LSNPClient:
 
 #------- POST
 
-    def send_post(self, content: str, ttl: int = 60):
+    def send_post(self, content: str, ttl: int = 3600):
         now = int(time.time())
         token = f"{self.user_id}|{now + ttl}|broadcast"
         message_id = secrets.token_hex(8)
 
         msg = parser.format_message({
             'TYPE': 'POST',
-            'USER_ID': self.user_id,
+            'FROM': self.user_id,
             'CONTENT': content,
             'TTL': ttl,
+            'TIMESTAMP': now,
             'MESSAGE_ID': message_id,
             'TOKEN': token
         })
@@ -292,7 +293,7 @@ class LSNPClient:
 
     def handle_post(self, parsed, sender_ip):
         """Handle POST messages"""
-        from_user = parsed.get('USER_ID')  # POST messages use USER_ID, not FROM
+        from_user = parsed.get('FROM') or parsed.get('USER_ID')  # Support both RFC and legacy format
         content = parsed.get('CONTENT')
         timestamp = parsed.get('TIMESTAMP')
         token = parsed.get('TOKEN')
@@ -580,7 +581,7 @@ class LSNPClient:
         del self.incoming_files[file_id]
         print(f"File transfer rejected: {file_id}")
 
-    def send_file_chunk(self, target_user_id, file_id, chunk_index, chunk_data):
+    def send_file_chunk(self, target_user_id, file_id, chunk_index, chunk_data, total_chunks):
         now = int(time.time())
         ttl_seconds = 3600
         token = f"{self.user_id}|{now + ttl_seconds}|file"
@@ -588,11 +589,13 @@ class LSNPClient:
             'TYPE': 'FILE_CHUNK',
             'FROM': self.user_id,
             'TO': target_user_id,
-            'FILE_ID': file_id,
+            'FILEID': file_id,
             'CHUNK_INDEX': chunk_index,
+            'TOTAL_CHUNKS': total_chunks,
+            'CHUNK_SIZE': len(chunk_data),
             'TIMESTAMP': now,
             'TOKEN': token,
-            'RAW_CONTENT': utils.base64_encode(chunk_data),
+            'DATA': utils.base64_encode(chunk_data),
         })
         peer_info = self.peer_manager.peers.get(target_user_id)
         if peer_info and peer_info.get('ip_address'):
@@ -605,19 +608,21 @@ class LSNPClient:
     def handle_file_chunk(self, parsed, sender_ip):
         from_user = parsed.get('FROM')
         to_user = parsed.get('TO')
-        file_id = parsed.get('FILE_ID')
+        file_id = parsed.get('FILEID')
         chunk_index = int(parsed.get('CHUNK_INDEX', -1))
+        total_chunks = int(parsed.get('TOTAL_CHUNKS', -1))
+        chunk_size = int(parsed.get('CHUNK_SIZE', -1))
         token = parsed.get('TOKEN')
-        raw_content = parsed.get('RAW_CONTENT')
-        if to_user != self.user_id or file_id is None or chunk_index < 0 or raw_content is None:
+        data = parsed.get('DATA')
+        if to_user != self.user_id or file_id is None or chunk_index < 0 or data is None:
             return
         if not self._validate_token_or_log(token, expected_scope='file', expected_user_id=from_user, sender_ip=sender_ip, message_type='FILE_CHUNK'):
             return
-        chunk_data = utils.base64_decode(raw_content)
+        chunk_data = utils.base64_decode(data)
         if file_id not in self.incoming_files:
-            self.incoming_files[file_id] = {'chunks': {}, 'from': from_user}
+            self.incoming_files[file_id] = {'chunks': {}, 'from': from_user, 'total_chunks': total_chunks}
         self.incoming_files[file_id]['chunks'][chunk_index] = chunk_data
-        utils.log(f"Received FILE_CHUNK {chunk_index} for {file_id} from {from_user}", level="INFO")
+        utils.log(f"Received FILE_CHUNK {chunk_index}/{total_chunks} for {file_id} from {from_user}", level="INFO")
         
         # Check if all chunks received and reassemble file
         self._check_file_completion(file_id)
@@ -629,16 +634,21 @@ class LSNPClient:
             
         file_info = self.incoming_files[file_id]
         chunks = file_info['chunks']
+        total_chunks = file_info.get('total_chunks', 0)
         
-        # Estimate total chunks based on file size (assuming 1KB chunks)
-        estimated_chunks = (file_info['filesize'] + 1023) // 1024
+        # Use actual total_chunks if available, otherwise estimate
+        if total_chunks > 0:
+            expected_chunks = total_chunks
+        else:
+            # Estimate total chunks based on file size (assuming 1KB chunks)
+            expected_chunks = (file_info['filesize'] + 1023) // 1024
         
-        # Check if we have enough chunks to attempt reassembly
-        if len(chunks) >= estimated_chunks:
+        # Check if we have all chunks to attempt reassembly
+        if len(chunks) >= expected_chunks:
             try:
                 # Reassemble file
                 file_data = b''
-                for i in range(estimated_chunks):
+                for i in range(expected_chunks):
                     if i in chunks:
                         file_data += chunks[i]
                     else:
@@ -747,7 +757,7 @@ class LSNPClient:
                         break
                         
                     # Send chunk
-                    self.send_file_chunk(from_user, file_id, chunk_index, chunk_data)
+                    self.send_file_chunk(from_user, file_id, chunk_index, chunk_data, total_chunks)
                     chunk_index += 1
                     
                     # Small delay to prevent overwhelming the network
@@ -885,11 +895,14 @@ class LSNPClient:
         now = int(time.time())
         ttl_seconds = 3600
         token = f"{self.user_id}|{now + ttl_seconds}|game"
+        message_id = secrets.token_hex(8)
         msg = parser.format_message({
             'TYPE': 'TICTACTOE_INVITE',
-            'GAME_ID': game_id,
             'FROM': self.user_id,
             'TO': target_user_id,
+            'GAMEID': game_id,
+            'MESSAGE_ID': message_id,
+            'SYMBOL': 'X',
             'TIMESTAMP': now,
             'TOKEN': token,
         })
@@ -900,7 +913,7 @@ class LSNPClient:
             utils.log(f"Sent TICTACTOE_INVITE for {game_id} to {target_user_id} via {dest_ip}", level="INFO")
 
     def handle_tictactoe_invite(self, parsed, sender_ip):
-        game_id = parsed.get('GAME_ID')
+        game_id = parsed.get('GAMEID') or parsed.get('GAME_ID')  # Support both RFC and legacy format
         from_user = parsed.get('FROM')
         to_user = parsed.get('TO')
         token = parsed.get('TOKEN')
@@ -995,11 +1008,16 @@ class LSNPClient:
         now = int(time.time())
         ttl_seconds = 3600
         token = f"{self.user_id}|{now + ttl_seconds}|game"
+        message_id = secrets.token_hex(8)
         msg = parser.format_message({
             'TYPE': 'TICTACTOE_MOVE',
-            'GAME_ID': game_id,
             'FROM': self.user_id,
+            'TO': self._get_other_player(game_id),
+            'GAMEID': game_id,
+            'MESSAGE_ID': message_id,
             'POSITION': position,
+            'SYMBOL': self._get_player_symbol(game_id),
+            'TURN': len(self.tictactoe_games[game_id]['moves']) + 1,
             'TIMESTAMP': now,
             'TOKEN': token,
         })
@@ -1015,9 +1033,11 @@ class LSNPClient:
 
     def handle_tictactoe_move(self, parsed, sender_ip):
         """Handle TICTACTOE_MOVE message"""
-        game_id = parsed.get('GAME_ID')
+        game_id = parsed.get('GAMEID') or parsed.get('GAME_ID')  # Support both RFC and legacy format
         from_user = parsed.get('FROM')
         position = parsed.get('POSITION')
+        symbol = parsed.get('SYMBOL')
+        turn = parsed.get('TURN')
         token = parsed.get('TOKEN')
         
         if game_id not in self.tictactoe_games:
@@ -1159,6 +1179,20 @@ class LSNPClient:
         if game_id in self.tictactoe_games:
             del self.tictactoe_games[game_id]
 
+    def _get_other_player(self, game_id):
+        """Get the other player's user ID in a game"""
+        if game_id not in self.tictactoe_games:
+            return None
+        players = self.tictactoe_games[game_id]['players']
+        return players[1] if players[0] == self.user_id else players[0]
+    
+    def _get_player_symbol(self, game_id):
+        """Get the current player's symbol (X or O)"""
+        if game_id not in self.tictactoe_games:
+            return 'X'
+        players = self.tictactoe_games[game_id]['players']
+        return 'X' if players[0] == self.user_id else 'O'
+
     def _display_game_board(self, game_id):
         """Display the Tic Tac Toe board with enhanced information"""
         if game_id not in self.tictactoe_games:
@@ -1261,6 +1295,8 @@ class LSNPClient:
         
         print("\n🔧 UTILITIES")
         print("  revoke <token>           - Revoke a token")
+        print("  test packetloss <rate>   - Enable packet loss simulation")
+        print("  test disable             - Disable packet loss simulation")
         print("  exit                     - Exit program")
         
         print("\n💡 QUICK EXAMPLES")
@@ -1465,6 +1501,30 @@ class LSNPClient:
                     else:
                         print("Usage: revoke <token>")
                         print("Example: revoke user@192.168.1.4|1234567890|follow")
+
+                elif command == "test":
+                    if len(cmd) > 1:
+                        subcmd = cmd[1].lower()
+                        if subcmd == "packetloss" and len(cmd) > 2:
+                            try:
+                                rate = float(cmd[2])
+                                if 0 <= rate <= 1:
+                                    utils.enable_packet_loss_simulation(rate)
+                                    print(f"Packet loss simulation enabled with {rate*100}% loss rate")
+                                else:
+                                    print("Rate must be between 0 and 1")
+                            except ValueError:
+                                print("Invalid rate. Use a number between 0 and 1")
+                        elif subcmd == "disable":
+                            utils.disable_packet_loss_simulation()
+                            print("Packet loss simulation disabled")
+                        else:
+                            print("Usage: test <packetloss|disable> [rate]")
+                            print("Examples:")
+                            print("  test packetloss 0.1  # 10% packet loss")
+                            print("  test disable         # Disable simulation")
+                    else:
+                        print("Usage: test <packetloss|disable> [rate]")
 
                 elif command == "verbose":
                     import config

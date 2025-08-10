@@ -1,8 +1,32 @@
 import datetime
 import time
 import base64
+import random
 
 revoked_tokens = set()
+
+# Configuration for reliability testing
+SIMULATE_PACKET_LOSS = False
+PACKET_LOSS_RATE = 0.1  # 10% packet loss for testing
+
+def should_drop_packet():
+    """Simulate packet loss for testing reliability"""
+    if SIMULATE_PACKET_LOSS:
+        return random.random() < PACKET_LOSS_RATE
+    return False
+
+def enable_packet_loss_simulation(rate=0.1):
+    """Enable packet loss simulation for testing"""
+    global SIMULATE_PACKET_LOSS, PACKET_LOSS_RATE
+    SIMULATE_PACKET_LOSS = True
+    PACKET_LOSS_RATE = rate
+    log(f"Packet loss simulation enabled with {rate*100}% loss rate", level="INFO")
+
+def disable_packet_loss_simulation():
+    """Disable packet loss simulation"""
+    global SIMULATE_PACKET_LOSS
+    SIMULATE_PACKET_LOSS = False
+    log("Packet loss simulation disabled", level="INFO")
 
 def log(message, level="INFO", sender_ip=None, message_type=None, verbose=True):
     import config
