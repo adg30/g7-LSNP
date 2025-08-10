@@ -1,5 +1,7 @@
 import time
 import utils
+import os
+import base64
 
 class PeerManager:
     def __init__(self):
@@ -40,6 +42,37 @@ class PeerManager:
             peer['last_seen'] = current_time
             utils.log(f"Updated peer: {user_id}", level="INFO")
 
+    def save_avatar_to_file(self, user_id, avatar_data, avatar_type):
+        """Save avatar data to a file"""
+        try:
+            # Create avatars directory if it doesn't exist
+            if not os.path.exists('avatars'):
+                os.makedirs('avatars')
+            
+            # Determine file extension from MIME type
+            if avatar_type == 'image/png':
+                ext = '.png'
+            elif avatar_type == 'image/jpeg' or avatar_type == 'image/jpg':
+                ext = '.jpg'
+            elif avatar_type == 'image/gif':
+                ext = '.gif'
+            else:
+                ext = '.img'  # fallback
+            
+            # Create filename from user_id
+            safe_user_id = user_id.replace('@', '_').replace('.', '_')
+            filename = f"avatars/{safe_user_id}{ext}"
+            
+            # Decode and save the image
+            image_data = base64.b64decode(avatar_data)
+            with open(filename, 'wb') as f:
+                f.write(image_data)
+            
+            return filename
+        except Exception as e:
+            utils.log(f"Error saving avatar for {user_id}: {e}", level="ERROR")
+            return None
+
     def display_all_peers(self):
         if not self.peers:
             print("No known peers.")
@@ -51,12 +84,14 @@ class PeerManager:
             print(f"-->Display Name: {peer['display_name']}")
             print(f"-->Status: {peer['status']}")
             print(f"-->IP Address: {peer['ip_address']}")
-            if peer.get('avatar_type'):
+            if peer.get('avatar_type') and peer.get('avatar_data'):
                 print(f"-->Avatar Type: {peer['avatar_type']}")
-            if peer.get('avatar_encoding'):
-                print(f"-->Avatar Encoding: {peer['avatar_encoding']}")
-            if peer.get('avatar_data'):
-                print(f"-->Avatar Data: {peer['avatar_data'][:50]}...")  # Show first 50 chars
+                # Save avatar to file and show the filename
+                avatar_file = self.save_avatar_to_file(user_id, peer['avatar_data'], peer['avatar_type'])
+                if avatar_file:
+                    print(f"-->Avatar: Saved as {avatar_file}")
+                else:
+                    print(f"-->Avatar: Error saving image")
             if peer['last_seen']:
                 time_diff = time.time() - peer['last_seen']
                 print(f"-->Last Seen: {int(time_diff)} seconds ago")

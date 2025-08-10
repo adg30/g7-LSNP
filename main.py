@@ -751,6 +751,10 @@ class LSNPClient:
                 chunk_size = 1024  # 1KB chunks
                 chunk_index = 0
                 
+                # Calculate total chunks first
+                file_size = file_to_send['filesize']
+                total_chunks = (file_size + chunk_size - 1) // chunk_size
+                
                 while True:
                     chunk_data = f.read(chunk_size)
                     if not chunk_data:
@@ -1005,6 +1009,50 @@ class LSNPClient:
         print(f"Game {game_id} rejected")
 
     def send_tictactoe_move(self, game_id, position):
+        # First, validate the move locally
+        if game_id not in self.tictactoe_games:
+            print(f"Game {game_id} not found")
+            return False
+            
+        game = self.tictactoe_games[game_id]
+        
+        # Check if it's our turn
+        if game['turn'] != self.user_id:
+            print(f"It's not your turn. Current turn: {self.peer_manager.get_display_name(game['turn'])}")
+            return False
+            
+        # Check if position is valid and empty
+        try:
+            position = int(position)
+            if not (0 <= position <= 8):
+                print("Position must be 0-8")
+                return False
+            if game['board'][position] != ' ':
+                print(f"Position {position} is already occupied")
+                return False
+        except (ValueError, TypeError):
+            print("Position must be a number 0-8")
+            return False
+        
+        # Make the move locally first
+        game['board'][position] = self._get_player_symbol(game_id)
+        game['moves'].append((self.user_id, position))
+        
+        # Switch turns locally
+        game['turn'] = self._get_other_player(game_id)
+        
+        # Display the updated board
+        self._display_game_board(game_id)
+        
+        # Check for game result
+        result = self._check_game_result(game_id)
+        if result:
+            print(f"\n🎮 Game Over! {result}")
+            # Send result to other player
+            self.send_tictactoe_result(game_id, result)
+            return True
+        
+        # Send the move to the other player
         now = int(time.time())
         ttl_seconds = 3600
         token = f"{self.user_id}|{now + ttl_seconds}|game"
@@ -1017,22 +1065,25 @@ class LSNPClient:
             'MESSAGE_ID': message_id,
             'POSITION': position,
             'SYMBOL': self._get_player_symbol(game_id),
-            'TURN': len(self.tictactoe_games[game_id]['moves']) + 1,
+            'TURN': len(game['moves']),
             'TIMESTAMP': now,
             'TOKEN': token,
         })
-        players = self.tictactoe_games.get(game_id, {}).get('players', [])
-        for player in players:
-            if player == self.user_id:
-                continue
-            peer_info = self.peer_manager.peers.get(player)
-            if peer_info and peer_info.get('ip_address'):
-                dest_ip = peer_info['ip_address']
-                self.network.send_message(msg, dest_ip=dest_ip)
-                utils.log(f"Sent TICTACTOE_MOVE for {game_id} to {player} via {dest_ip}", level="INFO")
+        
+        other_player = self._get_other_player(game_id)
+        peer_info = self.peer_manager.peers.get(other_player)
+        if peer_info and peer_info.get('ip_address'):
+            dest_ip = peer_info['ip_address']
+            self.network.send_message(msg, dest_ip=dest_ip)
+            utils.log(f"Sent TICTACTOE_MOVE for {game_id} to {other_player} via {dest_ip}", level="INFO")
+            print(f"\n➡️ Waiting for {self.peer_manager.get_display_name(other_player)}'s move...")
+            return True
+        else:
+            print(f"Cannot send move - no known IP for {other_player}")
+            return False
 
     def handle_tictactoe_move(self, parsed, sender_ip):
-        """Handle TICTACTOE_MOVE message"""
+        """Handle TICTACTOE_MOVE message from other player"""
         game_id = parsed.get('GAMEID') or parsed.get('GAME_ID')  # Support both RFC and legacy format
         from_user = parsed.get('FROM')
         position = parsed.get('POSITION')
@@ -1041,15 +1092,16 @@ class LSNPClient:
         token = parsed.get('TOKEN')
         
         if game_id not in self.tictactoe_games:
+            utils.log(f"Received move for unknown game {game_id} from {from_user}", level="WARN")
             return
         if not self._validate_token_or_log(token, expected_scope='game', expected_user_id=from_user, sender_ip=sender_ip, message_type='TICTACTOE_MOVE'):
             return
             
         game = self.tictactoe_games[game_id]
         
-        # Check if it's the player's turn
+        # Check if it's the other player's turn
         if game['turn'] != from_user:
-            utils.log(f"Move from {from_user} ignored - not their turn", level="WARN")
+            utils.log(f"Move from {from_user} ignored - not their turn (current turn: {game['turn']})", level="WARN")
             return
             
         # Check if position is valid and empty
@@ -1069,23 +1121,23 @@ class LSNPClient:
         game['board'][position] = 'X' if from_user == game['players'][0] else 'O'
         game['moves'].append((from_user, position))
         
-        # Switch turns
-        game['turn'] = game['players'][1] if game['turn'] == game['players'][0] else game['players'][0]
+        # Switch turns to us
+        game['turn'] = self.user_id
+        
+        # Display updated board
+        print(f"\n🎮 {self.peer_manager.get_display_name(from_user)} made a move!")
+        self._display_game_board(game_id)
         
         # Check for game result
         result = self._check_game_result(game_id)
         
-        # Display updated board
-        self._display_game_board(game_id)
-        
         if result:
             # Game ended
             print(f"\n🎮 Game Over! {result}")
+            game['status'] = 'finished'
         else:
-            # Game continues
-            next_player = self.peer_manager.get_display_name(game['turn'])
-            print(f"\n➡️ Next turn: {next_player}")
-            print(f"💡 Use: ttt move {game_id} <position> to make your move")
+            # Game continues - it's our turn
+            print(f"\n➡️ It's your turn! Use: ttt move {game_id} <position>")
 
     def _check_game_result(self, game_id):
         """Check if the game has a winner or is a draw"""
@@ -1209,16 +1261,12 @@ class LSNPClient:
         current_player = self.peer_manager.get_display_name(game['turn'])
         print(f"Current Turn: {current_player}")
         
-        # Display the board
-        print("\nPositions:")
-        for i in range(0, 9, 3):
-            print(f" {i} | {i+1} | {i+2} ")
-            if i < 6:
-                print("---+---+---")
-        
+        # Display the board in the requested format (X | O | X)
         print("\nCurrent Board:")
         for i in range(0, 9, 3):
-            print(f" {board[i]} | {board[i+1]} | {board[i+2]} ")
+            # Replace empty spaces with underscores for better visibility
+            row = [cell if cell != ' ' else '_' for cell in board[i:i+3]]
+            print(f" {row[0]} | {row[1]} | {row[2]} ")
             if i < 6:
                 print("---+---+---")
         
@@ -1724,8 +1772,9 @@ class LSNPClient:
                         try:
                             position = int(cmd[3])
                             if 0 <= position <= 8:
-                                self.send_tictactoe_move(game_id, position)
-                                print(f"Move sent: position {position}")
+                                success = self.send_tictactoe_move(game_id, position)
+                                if not success:
+                                    print("Move failed. Check the game status.")
                             else:
                                 print("Position must be 0-8")
                         except ValueError:
@@ -1733,15 +1782,7 @@ class LSNPClient:
                     elif subcmd == "board" and len(cmd) > 2:
                         game_id = cmd[2]
                         if game_id in self.tictactoe_games:
-                            game = self.tictactoe_games[game_id]
-                            board = game['board']
-                            print(f"\n=== Tic Tac Toe Board ({game_id}) ===")
-                            for i in range(0, 9, 3):
-                                print(f" {board[i]} | {board[i+1]} | {board[i+2]} ")
-                                if i < 6:
-                                    print("---+---+---")
-                            print(f"Turn: {game['turn']}")
-                            print(f"Status: {game['status']}")
+                            self._display_game_board(game_id)
                         else:
                             print(f"Game {game_id} not found")
                     elif subcmd == "list":
