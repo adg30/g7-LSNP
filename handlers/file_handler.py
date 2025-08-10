@@ -243,6 +243,7 @@ class FileHandler:
         now = int(time.time())
         ttl_seconds = 3600
         token = f"{self.client.user_id}|{now + ttl_seconds}|file"
+        message_id = secrets.token_hex(8)
         msg = parser.format_message({
             'TYPE': 'FILE_CHUNK',
             'FROM': self.client.user_id,
@@ -251,6 +252,7 @@ class FileHandler:
             'CHUNK_INDEX': chunk_index,
             'TOTAL_CHUNKS': total_chunks,
             'CHUNK_SIZE': len(chunk_data),
+            'MESSAGE_ID': message_id,
             'TIMESTAMP': now,
             'TOKEN': token,
             'DATA': utils.base64_encode(chunk_data),
@@ -274,6 +276,7 @@ class FileHandler:
         total_chunks = parsed.get('TOTAL_CHUNKS')
         chunk_size = parsed.get('CHUNK_SIZE')
         token = parsed.get('TOKEN')
+        message_id = parsed.get('MESSAGE_ID')
         data = parsed.get('DATA')
         
         # Validation
@@ -317,6 +320,10 @@ class FileHandler:
             # Store chunk
             file_info['chunks'][chunk_index] = chunk_data
             utils.log(f"Received chunk {chunk_index}/{total_chunks} for {file_id}", level="DEBUG")
+
+            # Send ACK for the received chunk
+            if message_id:
+                self.client.send_ack(message_id, sender_ip)
             
             # Update progress
             progress = len(file_info['chunks']) / total_chunks * 100

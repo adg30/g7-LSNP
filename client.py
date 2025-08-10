@@ -180,6 +180,16 @@ class LSNPClient:
             utils.log_message_drop("invalid_token", message_type, sender_ip)
         return valid
 
+    def send_ack(self, message_id: str, dest_ip: str):
+        """Send an ACK message in response to a received message."""
+        msg = parser.format_message({
+            'TYPE': 'ACK',
+            'MESSAGE_ID': message_id,
+            'STATUS': 'RECEIVED',
+        })
+        self.network.send_message(msg, dest_ip=dest_ip)
+        utils.log(f"Sent ACK for {message_id} to {dest_ip}", level="INFO")
+
     def get_user_id_by_display_name(self, display_name):
         """Find user ID by display name"""
         for user_id, peer_info in self.peer_manager.peers.items():

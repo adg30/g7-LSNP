@@ -159,6 +159,7 @@ class SocialHandler:
         from_user = parsed.get('FROM')
         to_user = parsed.get('TO')
         content = parsed.get('CONTENT')
+        message_id = parsed.get('MESSAGE_ID')
         token = parsed.get('TOKEN')
         
         if to_user != self.client.user_id:
@@ -170,6 +171,10 @@ class SocialHandler:
         display_name = self.client.peer_manager.get_display_name(from_user)
         utils.log_protocol_event("DM_RECEIVED", f"from={display_name} content={content[:30]}...", sender_ip, "DM")
         print(f"\n[DM] {display_name}: {content}")
+
+        # Send ACK to confirm receipt
+        if message_id:
+            self.send_ack(message_id, sender_ip)
 
     def send_ack(self, message_id: str, dest_ip: str):
         """Send an ACK message"""

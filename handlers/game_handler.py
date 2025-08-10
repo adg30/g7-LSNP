@@ -202,6 +202,7 @@ class GameHandler:
         symbol = parsed.get('SYMBOL')
         turn = parsed.get('TURN')
         token = parsed.get('TOKEN')
+        message_id = parsed.get('MESSAGE_ID')
         
         if game_id not in self.tictactoe_games:
             utils.log(f"Received move for unknown game {game_id} from {from_user}", level="WARN")
@@ -239,6 +240,10 @@ class GameHandler:
         # Display updated board
         print(f"\n🎮 {self.client.peer_manager.get_display_name(from_user)} made a move!")
         self._display_game_board(game_id)
+
+        # Send ACK for the move
+        if message_id:
+            self.client.send_ack(message_id, sender_ip)
         
         # Check for game result
         result = self._check_game_result(game_id)
