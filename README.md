@@ -363,7 +363,7 @@ Edit `config.py` to modify:
 
 ## Work Distribution
 
-| Task / Role                     | Member 1 (Go)                               | Member 2 (Aaron)                            | Member 3 (Gab)                              | Member 4 (Rein)                             |
+| Task / Role                     | Member 1 (Aaron)                               | Member 2 (Robbie)                            | Member 3 (Austin)                              | Member 4 (Rai)                             |
 | ------------------------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------------- |
 | **Network Communication**       |                                             |                                             |                                             |                                             |
 | UDP Socket Setup                | Primary                                     | Reviewer                                    | Secondary                                   |                                             |
