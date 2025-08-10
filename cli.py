@@ -295,8 +295,24 @@ class CLI:
                                 print(f"{group_id}: {group_info['name']} ({len(group_info['members'])} members)")
                         else:
                             print("No groups")
+                    elif subcmd == "update" and len(cmd) > 2:
+                        group_id = cmd[2]
+                        add_members = []
+                        remove_members = []
+                        i = 3
+                        while i < len(cmd):
+                            if cmd[i] == '--add' and i + 1 < len(cmd):
+                                add_members = cmd[i+1].split(',')
+                                i += 2
+                            elif cmd[i] == '--remove' and i + 1 < len(cmd):
+                                remove_members = cmd[i+1].split(',')
+                                i += 2
+                            else:
+                                print(f"Invalid argument: {cmd[i]}")
+                                break
+                        self.client.group_handler.send_group_update(group_id, add_members, remove_members)
                     else:
-                        print("Usage: group <create|message|list> [args...]")
+                        print("Usage: group <create|message|list|update> [args...]")
 
                 elif command == "ttt":
                     if len(cmd) < 2:
@@ -439,6 +455,7 @@ class CLI:
         print("  group create <name> <members> - Create a group")
         print("  group message <id> <text>     - Send group message")
         print("  group list                     - List your groups")
+        print("  group update <id> [--add user1,user2] [--remove user3] - Update group members")
         
         print("\n🎮 TIC TAC TOE")
         print("  ttt invite <user_id>     - Invite user to play")

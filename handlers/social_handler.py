@@ -174,24 +174,7 @@ class SocialHandler:
 
         # Send ACK to confirm receipt
         if message_id:
-            self.send_ack(message_id, sender_ip)
-
-    def send_ack(self, message_id: str, dest_ip: str):
-        """Send an ACK message"""
-        now = int(time.time())
-        ttl_seconds = 3600
-        token = f"{self.client.user_id}|{now + ttl_seconds}|chat"
-        
-        msg = parser.format_message({
-            'TYPE': 'ACK',
-            'FROM': self.client.user_id,
-            'MESSAGE_ID': message_id,
-            'TIMESTAMP': now,
-            'TOKEN': token,
-        })
-        
-        self.client.network.send_message(msg, dest_ip=dest_ip)
-        utils.log(f"Sent ACK for {message_id} to {dest_ip}", level="INFO")
+            self.client.send_ack(message_id, sender_ip)
 
     def handle_ack(self, parsed, sender_ip):
         """Handle ACK messages"""
