@@ -112,6 +112,7 @@ class FileHandler:
             'FILESIZE': filesize,
             'FILETYPE': file_type,
             'DESCRIPTION': f"File transfer for {os.path.basename(filename)}",
+            'FILEHASH': filehash,
             'MESSAGE_ID': message_id,
             'TIMESTAMP': now,
             'TOKEN': token,
@@ -138,6 +139,7 @@ class FileHandler:
         filesize = parsed.get('FILESIZE')
         filetype = parsed.get('FILETYPE')
         description = parsed.get('DESCRIPTION')
+        filehash = parsed.get('FILEHASH', None) # Make filehash optional
         token = parsed.get('TOKEN')
         
         if to_user != self.client.user_id:
@@ -152,6 +154,8 @@ class FileHandler:
         self.incoming_files[file_id] = {
             'filename': filename,
             'filesize': int(filesize),
+            'filetype': filetype,
+            'description': description,
             'filehash': filehash,
             'from': from_user,
             'chunks': {},
@@ -162,7 +166,8 @@ class FileHandler:
         
         print(f"\n📁 [FILE_OFFER] {display_name} wants to send you '{filename}'")
         print(f"   Size: {filesize} bytes ({int(filesize)//1024} KB)")
-        print(f"   Hash: {filehash}")
+        print(f"   Type: {filetype}")
+        print(f"   Description: {description}")
         print(f"   File ID: {file_id}")
         print(f"Commands:")
         print(f"  acceptfile {file_id} - Accept the file transfer")
@@ -414,23 +419,28 @@ class FileHandler:
 
             print(f"[INFO] File written successfully to {safe_path}")
 
-            # Verify hash
-            with open(safe_path, 'rb') as f:
-                file_data = f.read()
-                file_hash = hashlib.sha256(file_data).hexdigest()
+            # Verify hash if available
+            if file_info.get('filehash'):
+                with open(safe_path, 'rb') as f:
+                    file_data = f.read()
+                    calculated_hash = hashlib.sha256(file_data).hexdigest()
 
-            print(f"[DEBUG] Calculated hash: {file_hash}")
-            print(f"[DEBUG] Expected hash:   {file_info['hash']}")
+                print(f"[DEBUG] Calculated hash: {calculated_hash}")
+                print(f"[DEBUG] Expected hash:   {file_info['filehash']}")
 
-            if file_hash != file_info['hash']:
-                print(f"[ERROR] Hash mismatch for file {original_filename}. Deleting corrupt file.")
-                os.remove(safe_path)
-                file_info['status'] = "failed"
-                file_info['saved_path'] = None
+                if calculated_hash != file_info['filehash']:
+                    print(f"[ERROR] Hash mismatch for file {original_filename}. Deleting corrupt file.")
+                    os.remove(safe_path)
+                    file_info['status'] = "failed"
+                    file_info['saved_path'] = None
+                else:
+                    file_info['status'] = "completed"
+                    file_info['saved_path'] = safe_path
+                    print(f"[SUCCESS] File {original_filename} saved and verified.")
             else:
                 file_info['status'] = "completed"
                 file_info['saved_path'] = safe_path
-                print(f"[SUCCESS] File {original_filename} saved and verified.")
+                print(f"[WARNING] File {original_filename} saved without hash verification (hash not provided in offer).")
 
         except Exception as e:
             print(f"[EXCEPTION] Failed to save file {original_filename}: {e}")
