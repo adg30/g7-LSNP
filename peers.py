@@ -8,6 +8,7 @@ class PeerManager:
         self.peers = {}
         self.groups = {}
         self.followers = {}
+        self.following = {}
 
     def add_peer(self, user_id, display_name=None, status=None, ip_address=None, avatar_type=None, avatar_encoding=None, avatar_data=None):
         current_time = time.time()
@@ -121,6 +122,20 @@ class PeerManager:
         for follower_id in followers:
             display_name = self.peers.get(follower_id, {}).get("display_name", follower_id)
             print(f"- {display_name} (@{follower_id})")
+
+    def add_following(self, user, user_to_follow):
+        if user not in self.following:
+            self.following[user] = set()
+        self.following[user].add(user_to_follow)
+        utils.log(f"{user} is now following {user_to_follow}", level="INFO")
+
+    def remove_following(self, user, user_to_unfollow):
+        if user in self.following:
+            self.following[user].discard(user_to_unfollow)
+            utils.log(f"{user} unfollowed {user_to_unfollow}", level="INFO")
+
+    def get_following(self, user_id):
+        return list(self.following.get(user_id, set()))
 
     def get_display_name(self, user_id):
         peer = self.peers.get(user_id)

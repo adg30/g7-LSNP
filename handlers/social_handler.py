@@ -28,6 +28,10 @@ class SocialHandler:
         if peer_info and peer_info.get('ip_address'):
             dest_ip = peer_info['ip_address']
             self.client.network.send_message(msg, dest_ip=dest_ip)
+            if action == "FOLLOW":
+                self.client.peer_manager.add_following(self.client.user_id, target_user_id)
+            elif action == "UNFOLLOW":
+                self.client.peer_manager.remove_following(self.client.user_id, target_user_id)
             utils.log(f"Sent {action} to {target_user_id} via {dest_ip}", level="INFO")
             print(f"{action} sent to {target_user_id}")
         else:
@@ -100,8 +104,7 @@ class SocialHandler:
                 self.client.network.send_message(msg, dest_ip=dest_ip)
                 utils.log(f"Sent POST to {follower_id} via {dest_ip}", level="INFO")
         
-        # Also broadcast to network for discovery
-        self.client.network.send_message(msg)
+        
         utils.log(f"Posted: {content[:50]}...", level="INFO")
         print(f"Post sent: {content}")
 
@@ -113,6 +116,11 @@ class SocialHandler:
         token = parsed.get('TOKEN')
         
         if not self.client._validate_token_or_log(token, expected_scope='broadcast', expected_user_id=from_user, sender_ip=sender_ip, message_type='POST'):
+            return
+
+        # Check if the user is following the sender
+        if from_user != self.client.user_id and from_user not in self.client.peer_manager.get_following(self.client.user_id):
+            utils.log(f"Ignoring post from {from_user} because we are not following them.", level="INFO")
             return
             
         # Store post locally
@@ -230,6 +238,11 @@ class SocialHandler:
             return
             
         if not self.client._validate_token_or_log(token, expected_scope='broadcast', expected_user_id=from_user, sender_ip=sender_ip, message_type='LIKE'):
+            return
+
+        # Check if the liker is a follower
+        if from_user not in self.client.peer_manager.get_followers(self.client.user_id):
+            utils.log(f"Ignoring like from {from_user} because they are not a follower.", level="INFO")
             return
             
         display_name = self.client.peer_manager.get_display_name(from_user)

@@ -1,6 +1,7 @@
 import time
 import os
 import utils
+import config
 
 class CLI:
     def __init__(self, client):
@@ -30,8 +31,8 @@ class CLI:
                 elif command == "peers":
                     self.client.peer_manager.display_all_peers()
                 elif command == "verbose":
-                    utils.VERBOSE = not utils.VERBOSE
-                    print(f"Verbose mode: {'ON' if utils.VERBOSE else 'OFF'}")
+                    config.VERBOSE_MODE = not config.VERBOSE_MODE
+                    print(f"Verbose mode: {'ON' if config.VERBOSE_MODE else 'OFF'}")
                 elif command == "follow":
                     if len(cmd) > 1:
                         target = cmd[1]
