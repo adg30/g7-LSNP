@@ -113,8 +113,9 @@ class GameHandler:
         token = f"{self.client.user_id}|{now + ttl_seconds}|game"
         msg = parser.format_message({
             'TYPE': 'TICTACTOE_REJECT',
-            'GAMEID': game_id,
+            'GAMEID': game_id,  # Fixed: Use GAMEID consistently
             'FROM': self.client.user_id,
+            'TO': self._get_other_player(game_id),  # ✅ ADD TO field for clarity
             'TIMESTAMP': now,
             'TOKEN': token,
         })
@@ -126,6 +127,7 @@ class GameHandler:
             self.client.network.send_message(msg, dest_ip=dest_ip)
             utils.log(f"Sent TICTACTOE_REJECT for {game_id} to {other_player}", level="INFO")
         
+        # Remove from our list
         del self.tictactoe_games[game_id]
         print(f"Game {game_id} rejected")
 
@@ -169,6 +171,10 @@ class GameHandler:
         result = self._check_game_result(game_id)
         if result:
             print(f"\n🎮 Game Over! {result}")
+            
+            # ✅ FIX: Mark game as finished BEFORE sending result
+            game['status'] = 'finished'
+            
             # Send result to other player
             self.send_tictactoe_result(game_id, result)
             return True
@@ -220,6 +226,11 @@ class GameHandler:
             return
             
         game = self.tictactoe_games[game_id]
+        
+        # FIX: Check if game is already finished
+        if game.get('status') == 'finished':
+            utils.log(f"Ignoring move for finished game {game_id}", level="WARN")
+            return
         
         # Check if it's the other player's turn
         if game['turn'] != from_user:
@@ -318,7 +329,7 @@ class GameHandler:
                 utils.log(f"Sent TICTACTOE_RESULT for {game_id} to {player} via {dest_ip}", level="INFO")
 
     def handle_tictactoe_result(self, parsed, sender_ip):
-        game_id = parsed.get('GAME_ID')
+        game_id = parsed.get('GAME_ID') or parsed.get('GAME_ID')
         from_user = parsed.get('FROM')
         result = parsed.get('RESULT')
         token = parsed.get('TOKEN')
@@ -386,20 +397,20 @@ class GameHandler:
         print(f"\n🎮 Tic Tac Toe Board ({game_id})")
         print(f"Status: {game['status'].upper()}")
         
-        # Show current turn
-        current_player = self.client.peer_manager.get_display_name(game['turn'])
-        print(f"Current Turn: {current_player}")
+        # Show current turn only if game is active
+        if game['status'] in ['active', 'invited']:
+            current_player = self.client.peer_manager.get_display_name(game['turn'])
+            print(f"Current Turn: {current_player}")
         
-        # Display the board in the requested format (X | O | X)
+        # Display the board
         print("\nCurrent Board:")
         for i in range(0, 9, 3):
-            # Replace empty spaces with underscores for better visibility
             row = [cell if cell != ' ' else '_' for cell in board[i:i+3]]
             print(f" {row[0]} | {row[1]} | {row[2]} ")
             if i < 6:
                 print("---+---+---")
         
-        # Show move history
+        # Show move history with validation
         if game['moves']:
             print(f"\n📝 Move History ({len(game['moves'])} moves):")
             for i, (player, pos) in enumerate(game['moves'], 1):
@@ -407,11 +418,18 @@ class GameHandler:
                 symbol = 'X' if player == game['players'][0] else 'O'
                 print(f"  {i}. {player_name} ({symbol}) → position {pos}")
         
-        # Show available positions
-        available = [i for i, cell in enumerate(board) if cell == ' ']
-        if available:
-            print(f"\n📍 Available positions: {', '.join(map(str, available))}")
+        # Show available positions only if game is active
+        if game['status'] == 'active':
+            available = [i for i, cell in enumerate(board) if cell == ' ']
+            if available:
+                print(f"\n📍 Available positions: {', '.join(map(str, available))}")
+            
+            # Only show commands if it's the player's turn and game is active
+            if game['turn'] == self.client.user_id:
+                print(f"\n💡 Your turn! Commands:")
+                print(f"  ttt move {game_id} <position> - Make a move")
+            else:
+                current_player = self.client.peer_manager.get_display_name(game['turn'])
+                print(f"\n⏳ Waiting for {current_player}'s move...")
         
-        print(f"\n💡 Commands:")
-        print(f"  ttt move {game_id} <position> - Make a move")
         print(f"  ttt board {game_id} - Show this board again")
