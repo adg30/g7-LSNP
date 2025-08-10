@@ -170,6 +170,8 @@ class LSNPClient:
             self.game_handler.handle_tictactoe_accept(parsed, sender_ip)
         elif msg_type == 'TICTACTOE_REJECT':
             self.game_handler.handle_tictactoe_reject(parsed, sender_ip)
+        elif msg_type == 'PING':
+            pass # Ignore PING messages
         else:
             utils.log(f"Unknown message type: {msg_type}", level="WARNING")
 
