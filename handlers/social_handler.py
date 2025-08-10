@@ -178,14 +178,12 @@ class SocialHandler:
 
     def handle_ack(self, parsed, sender_ip):
         """Handle ACK messages"""
-        from_user = parsed.get('FROM')
         message_id = parsed.get('MESSAGE_ID')
-        token = parsed.get('TOKEN')
+        status = parsed.get('STATUS')
         
-        if not self.client._validate_token_or_log(token, expected_scope='chat', expected_user_id=from_user, sender_ip=sender_ip, message_type='ACK'):
-            return
-            
-        utils.log(f"Received ACK for {message_id} from {from_user}", level="INFO")
+        # No token validation needed for ACK as per RFC
+        
+        utils.log(f"Received ACK for {message_id} with status {status}", level="INFO")
 
     def send_like(self, target_user_id: str, post_timestamp: int, action: str = "LIKE"):
         """Sends a LIKE or UNLIKE message to the author of a post"""

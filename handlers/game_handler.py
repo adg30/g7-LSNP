@@ -74,7 +74,7 @@ class GameHandler:
         token = f"{self.client.user_id}|{now + ttl_seconds}|game"
         msg = parser.format_message({
             'TYPE': 'TICTACTOE_ACCEPT',
-            'GAME_ID': game_id,
+            'GAMEID': game_id,
             'FROM': self.client.user_id,
             'TIMESTAMP': now,
             'TOKEN': token,
@@ -104,7 +104,7 @@ class GameHandler:
         token = f"{self.client.user_id}|{now + ttl_seconds}|game"
         msg = parser.format_message({
             'TYPE': 'TICTACTOE_REJECT',
-            'GAME_ID': game_id,
+            'GAMEID': game_id,
             'FROM': self.client.user_id,
             'TIMESTAMP': now,
             'TOKEN': token,
